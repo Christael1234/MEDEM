@@ -10,6 +10,7 @@ import { AttendanceModule } from './modules/attendance/attendance.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CampusesModule } from './modules/campuses/campuses.module';
+import { CbtExamsModule } from './modules/cbt-exams/cbt-exams.module';
 import { ClassesModule } from './modules/classes/classes.module';
 import { CommunicationModule } from './modules/communication/communication.module';
 import { GuardiansModule } from './modules/guardians/guardians.module';
@@ -52,6 +53,7 @@ import { UsersModule } from './modules/users/users.module';
     ResultsModule,
     AssignmentsModule,
     LessonsModule,
+    CbtExamsModule,
     CommunicationModule,
     TeacherPortalModule,
     StudentPortalModule,

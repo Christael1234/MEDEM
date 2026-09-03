@@ -490,68 +490,63 @@
     });
   }
 
-  // ============ CBT Exams (mock, real interactive engine) ============
-  const cbtExams = [
-    { id: 'math-cbt', subject: 'Mathematics', title: 'Third term CBT — Algebra & Geometry', duration: '3 min', questions: 5, status: 'Not started' },
-    { subject: 'English', title: 'Third term CBT — Comprehension', duration: '40 min', questions: 25, status: 'Not started' },
-    { subject: 'Basic Science', title: 'Third term CBT — Living things', duration: '30 min', questions: 20, status: 'Completed', score: '16/20' },
-    { subject: 'Social Studies', title: 'Third term CBT — Government', duration: '30 min', questions: 20, status: 'In progress' },
-  ];
-  const examQuestionBank = { 'math-cbt': { duration: 180, questions: [{ q: 'Solve for x: 2x + 5 = 17', options: ['x = 5', 'x = 6', 'x = 7', 'x = 8'], correct: 1 }, { q: 'What is the sum of interior angles in a triangle?', options: ['90°', '180°', '270°', '360°'], correct: 1 }, { q: 'Simplify: 3(x + 4) − 2x', options: ['x + 12', 'x + 4', '5x + 12', 'x − 12'], correct: 0 }, { q: 'The area of a circle with radius 7cm is (use π = 22/7)', options: ['154 cm²', '44 cm²', '22 cm²', '77 cm²'], correct: 0 }, { q: 'If y = 2x + 3 and x = 4, what is y?', options: ['9', '10', '11', '12'], correct: 2 }] } };
-  function pageCbtExamsStudent(label) {
-    return `<section class="page workspace-page" id="cbt-exams"><div class="page-heading"><div><p class="eyebrow">Computer-based tests</p><h1>${label}</h1><p class="subtitle">No CBT exam data source is built yet — this isn't showing you fake data.</p></div></div><section class="data-card"><div class="empty-state"><span class="mini-avatar">✓</span><h3>Not available yet</h3><p>CBT exams (questions, timed attempts, auto-grading) haven't been built on the backend — it's a real feature, not a quick wire-up. Ask if you'd like it built.</p></div></section></section>`;
-  }
-  const teacherExams = [{ title: 'Third term CBT — Algebra & Geometry', cls: 'JSS 2A', questions: 30, status: 'Published' }, { title: 'Mid-term mock test', cls: 'JSS 2A', questions: 15, status: 'Pending approval' }, { title: 'Quick quiz — Fractions', cls: 'JSS 2B', questions: 10, status: 'Draft' }];
+  // ============ CBT Exams (real — DRAFT -> SUBMITTED -> PUBLISHED) ============
+  let studentCbtExams = [];
+
   function pageCbtExamsTeacher(label) {
-    const kpis = [['Published', '1', 'Live for students'], ['Pending approval', '1', 'Awaiting principal sign-off'], ['Drafts', '1', 'Question bank in progress'], ['Avg completion', '92%', 'Across published exams']];
-    const actionFor = (e) => e.status === 'Draft' ? `<button class="outline-button" data-submit-teacher-exam="${e.title}">Submit for approval</button>` : e.status === 'Pending approval' ? '<span class="view-only-badge">Awaiting approval</span>' : `<button class="outline-button" data-view-exam-results="${e.title}">View results</button>`;
-    const rows = teacherExams.map((e) => `<tr class="${e.rejectionReason ? 'row-flagged' : ''}"><td><strong>${e.title}</strong>${e.rejectionReason ? `<br><small class="reason-note">Sent back: ${e.rejectionReason}</small>` : ''}</td><td>${e.cls}</td><td>${e.questions} questions</td><td><span class="status ${e.status !== 'Published' ? 'pending' : ''}">${e.status}</span></td><td class="row-action">${actionFor(e)}</td></tr>`).join('');
-    return `<section class="page workspace-page" id="cbt-exams"><div class="page-heading"><div><p class="eyebrow">Set & manage exams</p><h1>${label}</h1><p class="subtitle">Build CBT question sets for your classes. New exams are reviewed before they go live.</p></div><button class="new-button" data-modal="new-exam">+ New CBT exam</button></div><div class="screen-kpis">${kpis.map((s) => `<article class="screen-kpi"><p>${s[0]}</p><strong>${s[1]}</strong><small>${s[2]}</small></article>`).join('')}</div><section class="data-card"><table class="data-table"><thead><tr><th>Exam</th><th>Class</th><th>Length</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table></section></section>`;
+    return `<section class="page workspace-page" id="cbt-exams"><div class="page-heading"><div><p class="eyebrow">Live from the API</p><h1>${label}</h1><p class="subtitle">Build CBT question sets for your classes. New exams are reviewed by the principal/proprietor before they go live.</p></div><button class="new-button" data-modal="new-exam">+ New CBT exam</button></div><div class="screen-kpis" id="cbtTeacherKpis"></div><section class="data-card"><table class="data-table"><thead><tr><th>Exam</th><th>Class</th><th>Questions</th><th>Status</th><th></th></tr></thead><tbody id="realCbtTeacherBody"><tr><td colspan="5">Loading…</td></tr></tbody></table></section></section>`;
   }
-  function pageCbtExam(label) { return currentRole === 'teacher' ? pageCbtExamsTeacher(label) : pageCbtExamsStudent(label); }
-  let cbtState = null;
-  function cbtRenderGrid() { const bank = examQuestionBank[cbtState.id]; document.getElementById('cbtQGrid').innerHTML = bank.questions.map((_, i) => `<button data-q="${i}" class="${i === cbtState.current ? 'current' : ''} ${cbtState.answers[i] !== null ? 'answered' : ''}">${i + 1}</button>`).join(''); }
-  function cbtRenderQuestion() {
-    const bank = examQuestionBank[cbtState.id], q = bank.questions[cbtState.current];
-    document.getElementById('cbtQNum').textContent = `Question ${cbtState.current + 1} of ${bank.questions.length}`;
-    document.getElementById('cbtQText').textContent = q.q;
-    document.getElementById('cbtOptions').innerHTML = q.options.map((o, i) => `<button class="cbt-option ${cbtState.answers[cbtState.current] === i ? 'selected' : ''}" data-opt="${i}">${o}</button>`).join('');
-    document.getElementById('cbtPrevBtn').disabled = cbtState.current === 0;
-    document.getElementById('cbtNextBtn').textContent = cbtState.current === bank.questions.length - 1 ? 'Finish' : 'Next →';
-    cbtRenderGrid();
+  async function loadRealCbtExamsTeacher() {
+    const tbody = document.getElementById('realCbtTeacherBody');
+    const kpiEl = document.getElementById('cbtTeacherKpis');
+    if (!tbody || !window.SchoolOS.getAccessToken()) return;
+    tbody.innerHTML = '<tr><td colspan="5">Loading…</td></tr>';
+    try {
+      const arms = await window.SchoolOS.api('/portal/teacher/class-arms');
+      if (!arms.length) { tbody.innerHTML = '<tr><td colspan="5">You are not assigned to any class yet.</td></tr>'; if (kpiEl) kpiEl.innerHTML = ''; return; }
+      const lists = await Promise.all(arms.map((a) => window.SchoolOS.api('/class-arms/' + a.id + '/cbt-exams').then((list) => list.map((ex) => ({ ...ex, armLabel: a.schoolClassName + ' · ' + a.armName })))));
+      const allExams = lists.flat();
+      if (kpiEl) {
+        const published = allExams.filter((ex) => ex.status === 'PUBLISHED').length;
+        const submitted = allExams.filter((ex) => ex.status === 'SUBMITTED').length;
+        const drafts = allExams.filter((ex) => ex.status === 'DRAFT').length;
+        kpiEl.innerHTML = [['Published', String(published), 'Live for students'], ['Pending approval', String(submitted), 'Awaiting principal sign-off'], ['Drafts', String(drafts), 'Question bank in progress']].map((s) => `<article class="screen-kpi"><p>${s[0]}</p><strong>${s[1]}</strong><small>${s[2]}</small></article>`).join('');
+      }
+      tbody.innerHTML = allExams.length ? allExams.map((ex) => {
+        const statusLabel = ex.status === 'DRAFT' ? 'Draft' : ex.status === 'SUBMITTED' ? 'Pending approval' : 'Published';
+        const action = ex.status === 'DRAFT' ? `<button class="outline-button" data-submit-teacher-exam="${ex.id}">Submit for approval</button>` : ex.status === 'SUBMITTED' ? '<span class="view-only-badge">Awaiting approval</span>' : `<button class="outline-button" data-view-exam-results="${ex.id}">View results</button>`;
+        return `<tr class="${ex.rejectionReason ? 'row-flagged' : ''}"><td><strong>${ex.title}</strong>${ex.rejectionReason ? `<br><small class="reason-note">Sent back: ${ex.rejectionReason}</small>` : ''}</td><td>${ex.armLabel}</td><td>${ex._count.questions} questions</td><td><span class="status ${ex.status !== 'PUBLISHED' ? 'pending' : ''}">${statusLabel}</span></td><td class="row-action">${action}</td></tr>`;
+      }).join('') : '<tr><td colspan="5">No CBT exams yet.</td></tr>';
+    } catch (err) { tbody.innerHTML = `<tr><td colspan="5">Could not load exams (${err.message})</td></tr>`; }
   }
-  function cbtRenderTimer() { const m = String(Math.floor(cbtState.remaining / 60)).padStart(2, '0'), s = String(cbtState.remaining % 60).padStart(2, '0'); document.getElementById('cbtTimer').textContent = `${m}:${s}`; }
-  function cbtTick() { cbtState.remaining--; cbtRenderTimer(); if (cbtState.remaining <= 0) cbtSubmitExam(); }
-  function startCbtExam(id) {
-    const bank = examQuestionBank[id], exam = cbtExams.find((e) => e.id === id);
-    if (!bank) return;
-    cbtState = { id, answers: new Array(bank.questions.length).fill(null), current: 0, remaining: bank.duration, timer: null };
-    document.getElementById('cbtExamSubject').textContent = exam.subject;
-    document.getElementById('cbtExamTitle').textContent = exam.title;
-    document.getElementById('cbtListView').style.display = 'none';
-    document.getElementById('cbtResultView').style.display = 'none';
-    document.getElementById('cbtRunner').style.display = 'block';
-    cbtRenderQuestion(); cbtRenderTimer();
-    cbtState.timer = setInterval(cbtTick, 1000);
+  async function submitTeacherExam(id) {
+    try { await window.SchoolOS.api('/cbt-exams/' + id + '/submit', { method: 'POST' }); window.SchoolOS.toast('Submitted for approval'); loadRealCbtExamsTeacher(); } catch (err) { window.SchoolOS.toast(`Could not submit (${err.message})`); }
   }
-  function cbtSelectOption(i) { cbtState.answers[cbtState.current] = i; cbtRenderQuestion(); }
-  function cbtGoTo(i) { cbtState.current = i; cbtRenderQuestion(); }
-  function cbtNext() { const bank = examQuestionBank[cbtState.id]; if (cbtState.current < bank.questions.length - 1) { cbtState.current++; cbtRenderQuestion(); } else cbtSubmitExam(); }
-  function cbtPrev() { if (cbtState.current > 0) { cbtState.current--; cbtRenderQuestion(); } }
-  function cbtSubmitExam() {
-    clearInterval(cbtState.timer);
-    const bank = examQuestionBank[cbtState.id], total = bank.questions.length, correct = bank.questions.filter((q, i) => cbtState.answers[i] === q.correct).length, pct = Math.round(correct / total * 100);
-    document.getElementById('cbtRunner').style.display = 'none';
-    const rv = document.getElementById('cbtResultView');
-    rv.style.display = 'block';
-    rv.innerHTML = `<section class="data-card cbt-result-card"><p class="eyebrow">Exam submitted</p><h2>${correct} / ${total} correct</h2><div class="cbt-score-bar"><span style="width:${pct}%"></span></div><p class="cbt-score-note">${pct >= 50 ? 'Well done — you passed.' : 'Keep practising — review the topics you missed.'}</p><button class="new-button" id="cbtBackBtn">Back to exams</button></section>`;
-    cbtState = null;
+  async function openExamResultsModal(id) {
+    try {
+      const data = await window.SchoolOS.api('/cbt-exams/' + id + '/attempts');
+      const s = data.stats, pctOr = (v) => v === null ? '—' : `${v}%`;
+      window.SchoolOS.detailModal({ eyebrow: 'Exam results', title: 'Results', rows: [['Average score', pctOr(s.averagePct)], ['Highest score', pctOr(s.highestPct)], ['Lowest score', pctOr(s.lowestPct)], ['Completion rate', pctOr(s.completionRate)], ['Attempts submitted', String(data.attempts.filter((a) => a.status === 'SUBMITTED').length)]] });
+    } catch (err) { window.SchoolOS.toast(`Could not load results (${err.message})`); }
   }
-  function openNewExamModal() {
-    window.SchoolOS.openModal(`<p class="eyebrow">CBT Exams</p><h2>New CBT exam</h2><p class="modal-sub">Add your questions below — each needs 4 options and a correct answer.</p>
+  /** Independent class + subject pickers, same reasoning as
+   * openNewLessonModal — mirrors what CbtExamsService actually validates
+   * server-side rather than a TeacherSubjectAssignment cross-check. */
+  async function openNewExamModal() {
+    let arms = [], assignments = [];
+    try {
+      [arms, assignments] = await Promise.all([window.SchoolOS.api('/portal/teacher/class-arms'), window.SchoolOS.api('/portal/teacher/classes')]);
+    } catch (err) { window.SchoolOS.toast(`Could not load your classes (${err.message})`); return; }
+    if (!arms.length) { window.SchoolOS.toast('You are not assigned to any class yet'); return; }
+    const subjectNames = [...new Set(assignments.map((a) => a.subject.name))];
+    if (!subjectNames.length) { window.SchoolOS.toast('You are not assigned to teach any subject yet'); return; }
+    const subjectByName = Object.fromEntries(assignments.map((a) => [a.subject.name, a.subject.id]));
+    const armByLabel = Object.fromEntries(arms.map((a) => [`${a.schoolClassName} · ${a.armName}`, a.id]));
+
+    window.SchoolOS.openModal(`<p class="eyebrow">CBT Exams</p><h2>New CBT exam</h2><p class="modal-sub">Creates a real exam via the SchoolOS API. Add your questions below — each needs 4 options and exactly one correct answer.</p>
       <form onsubmit="__examSubmit(event)">
-        <div class="form-row"><div class="form-field"><label>Exam title</label><input name="title" placeholder="e.g. Mid-term mock test"></div><div class="form-field"><label>Class</label><select name="cls">${['JSS 2A', 'JSS 2B', 'JSS 3B', 'SS 1A'].map((c) => `<option>${c}</option>`).join('')}</select></div></div>
-        <div class="form-field"><label>Duration (minutes)</label><input name="duration" type="number" placeholder="30"></div>
+        <div class="form-row"><div class="form-field"><label>Exam title</label><input name="title" placeholder="e.g. Mid-term mock test"></div><div class="form-field"><label>Class</label><select name="cls">${Object.keys(armByLabel).map((c) => `<option>${c}</option>`).join('')}</select></div></div>
+        <div class="form-row"><div class="form-field"><label>Subject</label><select name="subject">${subjectNames.map((s) => `<option>${s}</option>`).join('')}</select></div><div class="form-field"><label>Duration (minutes)</label><input name="duration" type="number" placeholder="30"></div></div>
         <div id="examQuestions" class="question-builder"></div>
         <button type="button" class="outline-button" id="addExamQuestionBtn">+ Add question</button>
         <div class="form-actions"><button type="button" class="outline-button" data-modal-close>Cancel</button><button type="submit" class="new-button">Save as draft</button></div>
@@ -565,30 +560,124 @@
     };
     document.getElementById('addExamQuestionBtn').addEventListener('click', addQ);
     addQ();
-    window.__examSubmit = (e) => {
+    window.__examSubmit = async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
-      const title = fd.get('title') || 'Untitled exam', cls = fd.get('cls');
+      const title = (fd.get('title') || '').trim();
+      const durationMinutes = Number(fd.get('duration'));
+      const classArmId = armByLabel[fd.get('cls')];
+      const subjectId = subjectByName[fd.get('subject')];
+      if (!title || !durationMinutes || !classArmId || !subjectId) { window.SchoolOS.toast('Title, class, subject and duration are required'); return; }
       const blocks = document.querySelectorAll('#examQuestions .question-block');
-      const questions = Array.from(blocks).map((b) => ({ q: b.querySelector('.eq-text').value || 'Untitled question', options: Array.from(b.querySelectorAll('.eq-opt')).map((o) => o.value || 'Option'), correct: Number(b.querySelector('.eq-correct').value) }));
-      teacherExams.push({ title, cls, questions: questions.length, status: 'Draft', questionBank: questions });
-      window.SchoolOS.closeModal();
-      renderRoleSections(currentRole);
-      window.SchoolOS.toast(`Draft saved · ${title} (${questions.length} question${questions.length === 1 ? '' : 's'})`);
+      if (!blocks.length) { window.SchoolOS.toast('Add at least one question'); return; }
+      const questions = [];
+      for (const b of blocks) {
+        const text = b.querySelector('.eq-text').value.trim();
+        const opts = Array.from(b.querySelectorAll('.eq-opt')).map((o) => o.value.trim());
+        if (!text || opts.some((o) => !o)) { window.SchoolOS.toast('Every question needs text and all 4 options filled in'); return; }
+        const correctIndex = Number(b.querySelector('.eq-correct').value);
+        questions.push({ text, options: opts.map((optText, i) => ({ text: optText, isCorrect: i === correctIndex })) });
+      }
+      try {
+        await window.SchoolOS.api('/cbt-exams', { method: 'POST', body: JSON.stringify({ classArmId, subjectId, title, durationMinutes, questions }) });
+        window.SchoolOS.closeModal();
+        loadRealCbtExamsTeacher();
+        window.SchoolOS.toast(`Draft saved · ${title} (${questions.length} question${questions.length === 1 ? '' : 's'})`);
+      } catch (err) { window.SchoolOS.toast(`Could not save exam (${err.message})`); }
     };
   }
-  function submitTeacherExam(title) {
-    const e = teacherExams.find((x) => x.title === title); if (!e) return;
-    e.status = 'Pending approval'; delete e.rejectionReason;
-    renderRoleSections(currentRole);
-    window.SchoolOS.toast(`Submitted for approval · ${title}`);
+
+  function pageCbtExamsStudent(label) {
+    return `<section class="page workspace-page" id="cbt-exams">
+      <div id="cbtListView"><div class="page-heading"><div><p class="eyebrow">Live from the API</p><h1>${label}</h1><p class="subtitle">Published CBT exams for your class.</p></div></div><section class="data-card"><table class="data-table"><thead><tr><th>Exam</th><th>Subject</th><th>Duration</th><th>Questions</th><th>Status</th><th></th></tr></thead><tbody id="realCbtStudentBody"><tr><td colspan="6">Loading…</td></tr></tbody></table></section></div>
+      <div id="cbtRunner" style="display:none"></div>
+      <div id="cbtResultView" style="display:none"></div>
+    </section>`;
   }
-  function openOwnExamResultModal(title) {
-    const e = cbtExams.find((x) => x.title === title); if (!e) return;
-    window.SchoolOS.detailModal({ eyebrow: e.subject, title: e.title, rows: [['Your score', e.score || '—'], ['Class average', '78%'], ['Questions', String(e.questions)]] });
+  async function loadRealCbtExamsStudent() {
+    const tbody = document.getElementById('realCbtStudentBody');
+    if (!tbody || !window.SchoolOS.getAccessToken()) return;
+    const user = window.SchoolOS.getUser();
+    if (!user || user.role !== 'STUDENT') { tbody.innerHTML = '<tr><td colspan="6">Sign in as a real student account to see live data.</td></tr>'; return; }
+    tbody.innerHTML = '<tr><td colspan="6">Loading…</td></tr>';
+    try {
+      const me = await window.SchoolOS.api('/portal/student/me');
+      if (!me.currentClassArmId) { tbody.innerHTML = '<tr><td colspan="6">Not yet assigned to a class.</td></tr>'; return; }
+      const exams = await window.SchoolOS.api('/class-arms/' + me.currentClassArmId + '/cbt-exams');
+      studentCbtExams = exams;
+      tbody.innerHTML = exams.length ? exams.map((ex) => {
+        const statusLabel = ex.myAttempt ? (ex.myAttempt.status === 'SUBMITTED' ? `Completed · ${ex.myAttempt.score}/${ex.myAttempt.totalMarks}` : 'In progress') : 'Not started';
+        const action = ex.myAttempt && ex.myAttempt.status === 'SUBMITTED' ? `<button class="outline-button" data-view-own-result="${ex.id}">View result</button>` : `<button class="new-button" data-cbt-start="${ex.id}">${ex.myAttempt ? 'Resume' : 'Start'}</button>`;
+        return `<tr><td><strong>${ex.title}</strong></td><td>${ex.subject?.name || '—'}</td><td>${ex.durationMinutes} min</td><td>${ex._count.questions}</td><td><span class="status ${ex.myAttempt?.status === 'SUBMITTED' ? '' : 'pending'}">${statusLabel}</span></td><td class="row-action">${action}</td></tr>`;
+      }).join('') : '<tr><td colspan="6">No CBT exams published yet.</td></tr>';
+    } catch (err) { tbody.innerHTML = `<tr><td colspan="6">Could not load exams (${err.message})</td></tr>`; }
   }
-  function openExamResultsModal(title) {
-    window.SchoolOS.detailModal({ eyebrow: 'Exam results', title, rows: [['Average score', '78%'], ['Highest score', '96%'], ['Lowest score', '42%'], ['Completion rate', '92%']] });
+  function openOwnExamResultModal(examId) {
+    const ex = studentCbtExams.find((x) => x.id === examId);
+    if (!ex || !ex.myAttempt) return;
+    window.SchoolOS.detailModal({ eyebrow: ex.subject?.name || 'CBT Exams', title: ex.title, rows: [['Your score', `${ex.myAttempt.score}/${ex.myAttempt.totalMarks}`], ['Questions', String(ex._count.questions)]] });
+  }
+
+  function pageCbtExam(label) { return currentRole === 'teacher' ? pageCbtExamsTeacher(label) : pageCbtExamsStudent(label); }
+
+  // ---- CBT runner: starts a real attempt, walks real questions (options
+  // never carry isCorrect for a STUDENT — see CbtExamsService.getOne),
+  // submits and shows the real auto-graded score. ----
+  let cbtState = null;
+  function cbtRenderGrid() {
+    const grid = document.getElementById('cbtQGrid'); if (!grid) return;
+    grid.innerHTML = cbtState.questions.map((q, i) => `<button data-q="${i}" class="${i === cbtState.current ? 'current' : ''} ${cbtState.answers[q.id] ? 'answered' : ''}">${i + 1}</button>`).join('');
+  }
+  function cbtRenderQuestion() {
+    const q = cbtState.questions[cbtState.current];
+    document.getElementById('cbtQNum').textContent = `Question ${cbtState.current + 1} of ${cbtState.questions.length}`;
+    document.getElementById('cbtQText').textContent = q.text;
+    document.getElementById('cbtOptions').innerHTML = q.options.map((o) => `<button class="cbt-option ${cbtState.answers[q.id] === o.id ? 'selected' : ''}" data-opt="${o.id}">${o.text}</button>`).join('');
+    document.getElementById('cbtPrevBtn').disabled = cbtState.current === 0;
+    document.getElementById('cbtNextBtn').textContent = cbtState.current === cbtState.questions.length - 1 ? 'Finish' : 'Next →';
+    cbtRenderGrid();
+  }
+  function cbtRenderTimer() {
+    const el = document.getElementById('cbtTimer'); if (!el) return;
+    const m = String(Math.floor(cbtState.remaining / 60)).padStart(2, '0'), s = String(cbtState.remaining % 60).padStart(2, '0');
+    el.textContent = `${m}:${s}`;
+  }
+  function cbtTick() { cbtState.remaining--; cbtRenderTimer(); if (cbtState.remaining <= 0) cbtSubmitExam(); }
+  async function startCbtExam(examId) {
+    try {
+      const attempt = await window.SchoolOS.api('/cbt-exams/' + examId + '/attempts', { method: 'POST' });
+      if (attempt.status === 'SUBMITTED') { window.SchoolOS.toast('You have already submitted this exam'); openOwnExamResultModal(examId); return; }
+      const detail = await window.SchoolOS.api('/cbt-exams/' + examId);
+      cbtState = { examId, attemptId: attempt.id, title: detail.title, subject: detail.subject?.name || '', questions: detail.questions, answers: {}, current: 0, remaining: detail.durationMinutes * 60, timer: null };
+      document.getElementById('cbtListView').style.display = 'none';
+      document.getElementById('cbtResultView').style.display = 'none';
+      const runner = document.getElementById('cbtRunner');
+      runner.style.display = 'block';
+      runner.innerHTML = `<div class="cbt-runner-head"><div><p class="eyebrow">${cbtState.subject}</p><h2>${cbtState.title}</h2></div><div class="cbt-timer" id="cbtTimer"></div></div><div class="cbt-runner-body"><div class="cbt-question-card"><p class="cbt-qnum" id="cbtQNum"></p><h3 id="cbtQText"></h3><div class="cbt-options" id="cbtOptions"></div><div class="cbt-runner-actions"><button type="button" class="outline-button" id="cbtPrevBtn">← Previous</button><button type="button" class="new-button" id="cbtNextBtn">Next →</button></div></div><div class="cbt-nav-panel"><p class="eyebrow">Questions</p><div class="cbt-qgrid" id="cbtQGrid"></div></div></div>`;
+      cbtRenderQuestion(); cbtRenderTimer();
+      cbtState.timer = setInterval(cbtTick, 1000);
+    } catch (err) { window.SchoolOS.toast(`Could not start exam (${err.message})`); }
+  }
+  function cbtSelectOption(optionId) { cbtState.answers[cbtState.questions[cbtState.current].id] = optionId; cbtRenderQuestion(); }
+  function cbtGoTo(i) { cbtState.current = i; cbtRenderQuestion(); }
+  function cbtNext() { if (cbtState.current < cbtState.questions.length - 1) { cbtState.current++; cbtRenderQuestion(); } else cbtSubmitExam(); }
+  function cbtPrev() { if (cbtState.current > 0) { cbtState.current--; cbtRenderQuestion(); } }
+  async function cbtSubmitExam() {
+    clearInterval(cbtState.timer);
+    const { examId, attemptId, questions, answers } = cbtState;
+    document.getElementById('cbtRunner').style.display = 'none';
+    const rv = document.getElementById('cbtResultView');
+    rv.style.display = 'block';
+    rv.innerHTML = '<section class="data-card"><p>Submitting…</p></section>';
+    try {
+      const payload = { answers: questions.map((q) => ({ questionId: q.id, selectedOptionId: answers[q.id] })) };
+      const result = await window.SchoolOS.api('/cbt-exams/' + examId + '/attempts/' + attemptId + '/submit', { method: 'POST', body: JSON.stringify(payload) });
+      const pct = Math.round((result.score / result.totalMarks) * 100);
+      rv.innerHTML = `<section class="data-card cbt-result-card"><p class="eyebrow">Exam submitted</p><h2>${result.score} / ${result.totalMarks} correct</h2><div class="cbt-score-bar"><span style="width:${pct}%"></span></div><p class="cbt-score-note">${pct >= 50 ? 'Well done — you passed.' : 'Keep practising — review the topics you missed.'}</p><button class="new-button" id="cbtBackBtn">Back to exams</button></section>`;
+    } catch (err) {
+      rv.innerHTML = `<section class="data-card"><p>Could not submit exam (${err.message})</p><button class="new-button" id="cbtBackBtn">Back to exams</button></section>`;
+    }
+    cbtState = null;
   }
 
   // ============ Lessons (real) ============
@@ -730,9 +819,37 @@
     return pageLessonsOversight(label);
   }
 
-  // ============ Content Approvals (stub) ============
+  // ============ Content Approvals (real — CBT exam review) ============
   function pageContentApprovals(label) {
-    return `<section class="page workspace-page" id="content-approvals"><div class="page-heading"><div><p class="eyebrow">Academic content</p><h1>${label}</h1><p class="subtitle">No approval workflow is built yet — this isn't showing you fake data.</p></div></div><section class="data-card"><div class="empty-state"><span class="mini-avatar">✓</span><h3>Coming soon</h3><p>Assignments post directly today (see Assignments) — a review/approval step before publishing hasn't been built on the backend. CBT exams have no data source at all yet.</p></div></section></section>`;
+    return `<section class="page workspace-page" id="content-approvals"><div class="page-heading"><div><p class="eyebrow">Live from the API</p><h1>${label}</h1><p class="subtitle">CBT exams a teacher has submitted, awaiting your review before they go live to students. Assignments and Lessons post directly today — no review step for those.</p></div></div><section class="data-card"><table class="data-table"><thead><tr><th>Exam</th><th>Class</th><th>Subject</th><th>Teacher</th><th>Questions</th><th></th></tr></thead><tbody id="realPendingExamsBody"><tr><td colspan="6">Loading…</td></tr></tbody></table></section></section>`;
+  }
+  async function loadRealPendingExams() {
+    const tbody = document.getElementById('realPendingExamsBody');
+    if (!tbody || !window.SchoolOS.getAccessToken()) return;
+    tbody.innerHTML = '<tr><td colspan="6">Loading…</td></tr>';
+    try {
+      const exams = await window.SchoolOS.api('/cbt-exams/pending-review');
+      tbody.innerHTML = exams.length ? exams.map((ex) => `<tr><td><strong>${ex.title}</strong></td><td>${ex.classArm.schoolClass.name} · ${ex.classArm.name}</td><td>${ex.subject?.name || '—'}</td><td>${ex.createdByStaffProfile?.user ? ex.createdByStaffProfile.user.firstName + ' ' + ex.createdByStaffProfile.user.lastName : '—'}</td><td>${ex._count.questions}</td><td class="row-action"><button class="outline-button" data-approve-exam="${ex.id}">Approve</button> <button class="outline-button" data-reject-exam="${ex.id}">Reject</button></td></tr>`).join('') : '<tr><td colspan="6">Nothing pending review.</td></tr>';
+    } catch (err) { tbody.innerHTML = `<tr><td colspan="6">Could not load pending exams (${err.message})</td></tr>`; }
+  }
+  async function approvePendingExam(id) {
+    try { await window.SchoolOS.api('/cbt-exams/' + id + '/approve', { method: 'POST' }); window.SchoolOS.toast('Exam approved and published'); loadRealPendingExams(); } catch (err) { window.SchoolOS.toast(`Could not approve (${err.message})`); }
+  }
+  function rejectPendingExam(id) {
+    window.SchoolOS.formModal({
+      eyebrow: 'CBT Exams', title: 'Reject exam', sub: 'Sends this exam back to the teacher as a draft, with your reason attached.',
+      fields: [{ name: 'reason', label: 'Reason', type: 'textarea', placeholder: 'What needs to change?' }],
+      submitLabel: 'Reject exam',
+      onSubmit: async (d) => {
+        const reason = (d.reason || '').trim();
+        if (!reason) { window.SchoolOS.toast('A reason is required'); return; }
+        try {
+          await window.SchoolOS.api('/cbt-exams/' + id + '/reject', { method: 'POST', body: JSON.stringify({ reason }) });
+          window.SchoolOS.toast('Exam sent back to the teacher');
+          loadRealPendingExams();
+        } catch (err) { window.SchoolOS.toast(`Could not reject (${err.message})`); }
+      },
+    });
   }
 
   // ============ Timetable (standalone, teacher / student) ============
@@ -835,6 +952,7 @@
     loadRealTeacherResults(); loadRealParentResults(); loadRealTeacherAssignments(); loadRealStudentPortalData();
     loadRealMyClasses();
     loadRealLessonsTeacher(); loadRealLessonsStudent(); loadRealLessonsParent(); loadRealLessonsOversight();
+    loadRealCbtExamsTeacher(); loadRealCbtExamsStudent(); loadRealPendingExams();
   }
   function showTab(id) {
     document.querySelectorAll('#academicsSections .workspace-page').forEach((p) => p.classList.toggle('visible', p.id === id));
@@ -869,12 +987,13 @@
     const ver = e.target.closest('[data-view-exam-results]'); if (ver) openExamResultsModal(ver.dataset.viewExamResults);
     const vor = e.target.closest('[data-view-own-result]'); if (vor) openOwnExamResultModal(vor.dataset.viewOwnResult);
     const start = e.target.closest('[data-cbt-start]'); if (start) startCbtExam(start.dataset.cbtStart);
-    const opt = e.target.closest('.cbt-option'); if (opt) cbtSelectOption(Number(opt.dataset.opt));
+    const opt = e.target.closest('.cbt-option'); if (opt) cbtSelectOption(opt.dataset.opt);
     const qbtn = e.target.closest('#cbtQGrid button'); if (qbtn) cbtGoTo(Number(qbtn.dataset.q));
     if (e.target.closest('#cbtNextBtn')) cbtNext();
     if (e.target.closest('#cbtPrevBtn')) cbtPrev();
-    if (e.target.closest('#cbtSubmitBtn')) cbtSubmitExam();
-    if (e.target.closest('#cbtBackBtn')) { document.getElementById('cbtResultView').style.display = 'none'; document.getElementById('cbtListView').style.display = ''; }
+    if (e.target.closest('#cbtBackBtn')) { document.getElementById('cbtResultView').style.display = 'none'; document.getElementById('cbtListView').style.display = ''; loadRealCbtExamsStudent(); }
+    const apEx = e.target.closest('[data-approve-exam]'); if (apEx) approvePendingExam(apEx.dataset.approveExam);
+    const rjEx = e.target.closest('[data-reject-exam]'); if (rjEx) rejectPendingExam(rjEx.dataset.rejectExam);
   });
   document.addEventListener('change', (e) => { if (e.target.id === 'timetableClassSelect') selectTimetableClass(e.target.value); });
 
