@@ -8,7 +8,13 @@
 // only the auth/login wiring runs. Every other page has #shell-root and
 // gets the full shell mount + auth guard.
 (function () {
-  const API_BASE = 'http://localhost:3000';
+  // Local dev: frontend and API run on different ports (this file is
+  // served from a plain static server, e.g. :5500, hitting the Nest app on
+  // :3000). Deployed: the Nest app serves this file itself (see
+  // ServeStaticModule in app.module.ts), same origin as the API, so a
+  // relative base just works — and needs no CORS between them.
+  const isLocalDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  const API_BASE = isLocalDev ? 'http://localhost:3000' : '';
   const TOKEN_KEY = 'schoolos_access_token';
   const REFRESH_KEY = 'schoolos_refresh_token';
   const USER_KEY = 'schoolos_user';

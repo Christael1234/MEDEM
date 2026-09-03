@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 import { ContextModule } from './common/context/context.module';
 import { NumberingModule } from './common/numbering/numbering.module';
 import { PrismaModule } from './common/prisma/prisma.module';
@@ -30,6 +32,11 @@ import { UsersModule } from './modules/users/users.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    // Serves the static frontend (public/) from the same origin as the API
+    // in deployed environments — same-origin means no CORS is needed
+    // between them there. Local dev keeps using a separate static server
+    // on :5500 (see shared.js's API_BASE); this doesn't affect that.
+    ServeStaticModule.forRoot({ rootPath: join(__dirname, '..', '..', 'public') }),
     ContextModule,
     PrismaModule,
     AuditModule,
