@@ -14,6 +14,7 @@ import { ClassesModule } from './modules/classes/classes.module';
 import { CommunicationModule } from './modules/communication/communication.module';
 import { GuardiansModule } from './modules/guardians/guardians.module';
 import { HealthModule } from './modules/health/health.module';
+import { LessonsModule } from './modules/lessons/lessons.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ParentPortalModule } from './modules/portals/parent-portal/parent-portal.module';
 import { StudentPortalModule } from './modules/portals/student-portal/student-portal.module';
@@ -50,6 +51,7 @@ import { UsersModule } from './modules/users/users.module';
     AttendanceModule,
     ResultsModule,
     AssignmentsModule,
+    LessonsModule,
     CommunicationModule,
     TeacherPortalModule,
     StudentPortalModule,
