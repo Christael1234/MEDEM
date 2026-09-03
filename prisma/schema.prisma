@@ -50,6 +50,7 @@ model Tenant {
   assignments       Assignment[]
   lessons           Lesson[]
   announcements     Announcement[]
+  cbtExams          CbtExam[]
 
   @@map("tenants")
 }
@@ -293,6 +294,7 @@ model ClassArm {
   studentClassHistory StudentClassHistory[]
   assignments         Assignment[]
   lessons             Lesson[]
+  cbtExams            CbtExam[]
 
   @@unique([schoolClassId, name])
   @@map("class_arms")
@@ -310,6 +312,7 @@ model Subject {
   results            Result[]
   assignments        Assignment[]
   lessons            Lesson[]
+  cbtExams           CbtExam[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -363,6 +366,7 @@ model StaffProfile {
   attendanceRecords  AttendanceRecord[] // as recorder is on User; this is for staff's own attendance in later phases
   assignmentsCreated Assignment[]
   lessonsCreated     Lesson[]
+  cbtExamsCreated    CbtExam[]
 
   @@unique([tenantId, staffId])
   @@index([tenantId])
@@ -414,6 +418,7 @@ model Student {
   attendanceRecords AttendanceRecord[]
   results           Result[]
   classHistory      StudentClassHistory[]
+  cbtAttempts       CbtAttempt[]
 
   @@unique([tenantId, admissionNo])
   @@index([tenantId])
@@ -773,4 +778,129 @@ model Announcement {
 
   @@index([tenantId])
   @@map("announcements")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// CBT (computer-based tests) — teacher-authored, principal/proprietor
+// reviewed before students can attempt. State machine: DRAFT -> SUBMITTED
+// -> PUBLISHED, with SUBMITTED -> DRAFT on rejection (rejectionReason set).
+// ─────────────────────────────────────────────────────────────────────────
+
+enum CbtExamStatus {
+  DRAFT
+  SUBMITTED
+  PUBLISHED
+}
+
+enum CbtAttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+}
+
+/// A teacher-authored, auto-graded multiple-choice test for one (class arm,
+/// subject) pair. Mirrors Result's review discipline (a student's score is
+/// effectively a result) rather than Lesson/Assignment's post-immediately
+/// model: DRAFT -> SUBMITTED (teacher) -> PUBLISHED (principal/proprietor),
+/// or back to DRAFT with rejectionReason set. Only a PUBLISHED exam is ever
+/// visible to STUDENT/PARENT — see CbtExamsService.assertReadAccess.
+model CbtExam {
+  id                      String        @id @default(uuid())
+  tenantId                String
+  tenant                  Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  classArmId              String
+  classArm                ClassArm      @relation(fields: [classArmId], references: [id], onDelete: Cascade)
+  subjectId               String
+  subject                 Subject       @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  createdByStaffProfileId String
+  createdByStaffProfile   StaffProfile  @relation(fields: [createdByStaffProfileId], references: [id], onDelete: Cascade)
+  title                   String
+  durationMinutes         Int
+  status                  CbtExamStatus @default(DRAFT)
+  rejectionReason         String?
+  submittedAt             DateTime?
+  publishedAt             DateTime?
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
+
+  questions CbtQuestion[]
+  attempts  CbtAttempt[]
+
+  @@index([tenantId])
+  @@index([classArmId])
+  @@map("cbt_exams")
+}
+
+/// One hop from tenantId — reached only through its parent CbtExam, itself
+/// tenant-scoped. Same pattern as LessonResource; see
+/// tenant-scoping.extension.ts's doc comment.
+model CbtQuestion {
+  id     String  @id @default(uuid())
+  examId String
+  exam   CbtExam @relation(fields: [examId], references: [id], onDelete: Cascade)
+  text   String
+  order  Int     @default(0)
+
+  options CbtOption[]
+  answers CbtAnswer[]
+
+  @@index([examId])
+  @@map("cbt_questions")
+}
+
+/// isCorrect must never be sent to a STUDENT/PARENT before/while an exam is
+/// in progress — CbtExamsService strips it for those roles. One hop from
+/// tenantId, same as CbtQuestion.
+model CbtOption {
+  id         String      @id @default(uuid())
+  questionId String
+  question   CbtQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  text       String
+  isCorrect  Boolean     @default(false)
+  order      Int         @default(0)
+
+  answers CbtAnswer[]
+
+  @@index([questionId])
+  @@map("cbt_options")
+}
+
+/// One row per (exam, student) — the unique constraint is what makes
+/// "start attempt" idempotent/resumable rather than creating duplicates.
+/// One hop from tenantId, reached through examId/studentId.
+model CbtAttempt {
+  id          String           @id @default(uuid())
+  examId      String
+  exam        CbtExam          @relation(fields: [examId], references: [id], onDelete: Cascade)
+  studentId   String
+  student     Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  status      CbtAttemptStatus @default(IN_PROGRESS)
+  score       Int?
+  totalMarks  Int?
+  startedAt   DateTime         @default(now())
+  submittedAt DateTime?
+
+  answers CbtAnswer[]
+
+  @@unique([examId, studentId])
+  @@index([examId])
+  @@index([studentId])
+  @@map("cbt_attempts")
+}
+
+/// Graded at submit time (CbtExamsService.submitAttempt computes isCorrect
+/// by comparing selectedOptionId against the question's flagged-correct
+/// option) — never recomputed on read. One hop from tenantId.
+model CbtAnswer {
+  id               String      @id @default(uuid())
+  attemptId        String
+  attempt          CbtAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  questionId       String
+  question         CbtQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  selectedOptionId String?
+  selectedOption   CbtOption?  @relation(fields: [selectedOptionId], references: [id], onDelete: SetNull)
+  isCorrect        Boolean     @default(false)
+
+  @@unique([attemptId, questionId])
+  @@index([attemptId])
+  @@map("cbt_answers")
 }

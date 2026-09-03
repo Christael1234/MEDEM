@@ -32,6 +32,7 @@ const TENANT_SCOPED_MODELS = new Set<Prisma.ModelName>([
   'Assignment',
   'Announcement',
   'Lesson',
+  'CbtExam',
 ]);
 
 const READ_OR_WHERE_OPS = new Set([
