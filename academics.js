@@ -591,13 +591,143 @@
     window.SchoolOS.detailModal({ eyebrow: 'Exam results', title, rows: [['Average score', '78%'], ['Highest score', '96%'], ['Lowest score', '42%'], ['Completion rate', '92%']] });
   }
 
-  // ============ Lessons ============
-  // No Lesson model exists anywhere in the backend (checked the Prisma
-  // schema and every module — nothing) — there is no real data to show
-  // for any role here, so this is an honest "Coming soon" for everyone,
-  // same as pageContentApprovals below.
+  // ============ Lessons (real) ============
+  const resourceChipsFor = (l) => (l.resources && l.resources.length) ? l.resources.map((r) => `<span class="permission-chip">${r.type} · ${r.name}</span>`).join('') : '<small>No resources yet</small>';
+
+  function pageLessonsTeacher(label) {
+    return `<section class="page workspace-page" id="lessons"><div class="page-heading"><div><p class="eyebrow">Live from the API</p><h1>${label}</h1><p class="subtitle">Create lessons and share resources with your assigned subject and class.</p></div><button class="new-button" data-modal="new-lesson">+ New lesson</button></div><section class="data-card"><table class="data-table"><thead><tr><th>Lesson</th><th>Subject</th><th>Class</th><th>Date</th><th>Resources</th><th></th></tr></thead><tbody id="realLessonsTeacherBody"><tr><td colspan="6">Loading…</td></tr></tbody></table></section></section>`;
+  }
+  async function loadRealLessonsTeacher() {
+    const tbody = document.getElementById('realLessonsTeacherBody');
+    if (!tbody || !window.SchoolOS.getAccessToken()) return;
+    tbody.innerHTML = '<tr><td colspan="6">Loading…</td></tr>';
+    try {
+      const arms = await window.SchoolOS.api('/portal/teacher/class-arms');
+      if (!arms.length) { tbody.innerHTML = '<tr><td colspan="6">You are not assigned to any class yet.</td></tr>'; return; }
+      const lists = await Promise.all(arms.map((a) => window.SchoolOS.api('/class-arms/' + a.id + '/lessons').then((list) => list.map((l) => ({ ...l, armLabel: a.schoolClassName + ' · ' + a.armName })))));
+      const allLessons = lists.flat();
+      tbody.innerHTML = allLessons.length ? allLessons.map((l) => `<tr><td><strong>${l.title}</strong>${l.notes ? `<br><small>${l.notes}</small>` : ''}</td><td>${l.subject?.name || '—'}</td><td>${l.armLabel}</td><td>${new Date(l.createdAt).toDateString()}</td><td>${resourceChipsFor(l)}</td><td class="row-action"><button class="outline-button" data-add-resource="${l.id}">+ Resource</button></td></tr>`).join('') : '<tr><td colspan="6">No lessons posted yet.</td></tr>';
+    } catch (err) { tbody.innerHTML = `<tr><td colspan="6">Could not load lessons (${err.message})</td></tr>`; }
+  }
+  /** Independent class + subject pickers — mirrors what LessonsService
+   * actually validates server-side (teacher can act on the arm, subject
+   * exists), which doesn't cross-check the pair the way TeacherSubjectAssignment
+   * does for Results. */
+  async function openNewLessonModal() {
+    let arms = [], assignments = [];
+    try {
+      [arms, assignments] = await Promise.all([window.SchoolOS.api('/portal/teacher/class-arms'), window.SchoolOS.api('/portal/teacher/classes')]);
+    } catch (err) { window.SchoolOS.toast(`Could not load your classes (${err.message})`); return; }
+    if (!arms.length) { window.SchoolOS.toast('You are not assigned to any class yet'); return; }
+    const subjectNames = [...new Set(assignments.map((a) => a.subject.name))];
+    if (!subjectNames.length) { window.SchoolOS.toast('You are not assigned to teach any subject yet'); return; }
+    const subjectByName = Object.fromEntries(assignments.map((a) => [a.subject.name, a.subject.id]));
+    const armByLabel = Object.fromEntries(arms.map((a) => [`${a.schoolClassName} · ${a.armName}`, a.id]));
+
+    window.SchoolOS.formModal({
+      eyebrow: 'Lessons', title: 'New lesson', sub: 'Creates a real lesson via the SchoolOS API — POST /lessons.',
+      fields: [
+        { name: 'classArm', label: 'Class', type: 'select', options: Object.keys(armByLabel) },
+        { name: 'subject', label: 'Subject', type: 'select', options: subjectNames },
+        { name: 'title', label: 'Lesson title', placeholder: 'e.g. Introduction to fractions' },
+        { name: 'notes', label: 'Notes for students', type: 'textarea', placeholder: 'What should students focus on?' },
+      ],
+      submitLabel: 'Save lesson',
+      onSubmit: async (d) => {
+        const payload = { classArmId: armByLabel[d.classArm], subjectId: subjectByName[d.subject], title: (d.title || '').trim(), notes: d.notes || undefined };
+        if (!payload.classArmId || !payload.subjectId || !payload.title) { window.SchoolOS.toast('Class, subject and title are required'); return; }
+        try {
+          await window.SchoolOS.api('/lessons', { method: 'POST', body: JSON.stringify(payload) });
+          window.SchoolOS.toast(`Lesson published · ${payload.title}`);
+          loadRealLessonsTeacher();
+        } catch (err) { window.SchoolOS.toast(`Could not post lesson (${err.message})`); }
+      },
+    });
+  }
+  /** No file-upload storage is built yet (CLAUDE.md's file storage
+   * abstraction is still just an interface) — url is a plain optional
+   * link field, same honesty as Assignment.resourceUrl. */
+  function openAddResourceModal(lessonId) {
+    window.SchoolOS.formModal({
+      eyebrow: 'Lesson resource', title: 'Add resource', sub: 'Creates a real resource entry via the SchoolOS API. A URL is optional — no file upload storage is built yet, so this just records a link.',
+      fields: [{ name: 'name', label: 'File / link name', placeholder: 'e.g. Worked-examples.pdf' }, { name: 'type', label: 'Resource type', type: 'select', options: ['PDF', 'Doc', 'Slides', 'Video', 'Image', 'Link'] }, { name: 'url', label: 'URL (optional)', placeholder: 'https://...' }],
+      submitLabel: 'Add resource',
+      onSubmit: async (d) => {
+        const name = (d.name || '').trim();
+        if (!name) { window.SchoolOS.toast('Resource name is required'); return; }
+        try {
+          await window.SchoolOS.api('/lessons/' + lessonId + '/resources', { method: 'POST', body: JSON.stringify({ name, type: d.type, url: d.url || undefined }) });
+          window.SchoolOS.toast(`Resource added · ${name}`);
+          loadRealLessonsTeacher();
+        } catch (err) { window.SchoolOS.toast(`Could not add resource (${err.message})`); }
+      },
+    });
+  }
+
+  function pageLessonsStudent(label) {
+    return `<section class="page workspace-page" id="lessons"><div class="page-heading"><div><p class="eyebrow">Live from the API</p><h1>${label}</h1><p class="subtitle">Lessons posted for your class.</p></div></div><section class="data-card"><table class="data-table"><thead><tr><th>Lesson</th><th>Subject</th><th>Date</th><th>Resources</th></tr></thead><tbody id="realLessonsStudentBody"><tr><td colspan="4">Loading…</td></tr></tbody></table></section></section>`;
+  }
+  async function loadRealLessonsStudent() {
+    const tbody = document.getElementById('realLessonsStudentBody');
+    if (!tbody || !window.SchoolOS.getAccessToken()) return;
+    const user = window.SchoolOS.getUser();
+    if (!user || user.role !== 'STUDENT') { tbody.innerHTML = '<tr><td colspan="4">Sign in as a real student account to see live data.</td></tr>'; return; }
+    tbody.innerHTML = '<tr><td colspan="4">Loading…</td></tr>';
+    try {
+      const me = await window.SchoolOS.api('/portal/student/me');
+      if (!me.currentClassArmId) { tbody.innerHTML = '<tr><td colspan="4">Not yet assigned to a class.</td></tr>'; return; }
+      const lessons = await window.SchoolOS.api('/class-arms/' + me.currentClassArmId + '/lessons');
+      tbody.innerHTML = lessons.length ? lessons.map((l) => `<tr><td><strong>${l.title}</strong>${l.notes ? `<br><small>${l.notes}</small>` : ''}</td><td>${l.subject?.name || '—'}</td><td>${new Date(l.createdAt).toDateString()}</td><td>${resourceChipsFor(l)}</td></tr>`).join('') : '<tr><td colspan="4">No lessons posted yet.</td></tr>';
+    } catch (err) { tbody.innerHTML = `<tr><td colspan="4">Could not load lessons (${err.message})</td></tr>`; }
+  }
+
+  function pageLessonsParent(label) {
+    return `<section class="page workspace-page" id="lessons"><div class="page-heading"><div><p class="eyebrow">Live from the API</p><h1>${label}</h1><p class="subtitle">Lessons posted for your children's classes.</p></div></div><div id="realLessonsParentBlocks"><p class="modal-sub">Loading…</p></div></section>`;
+  }
+  async function loadRealLessonsParent() {
+    const container = document.getElementById('realLessonsParentBlocks');
+    if (!container || !window.SchoolOS.getAccessToken()) return;
+    container.innerHTML = '<p class="modal-sub">Loading…</p>';
+    try {
+      const children = await window.SchoolOS.api('/portal/parent/children');
+      if (!children.length) { container.innerHTML = '<div class="data-card"><div class="empty-state"><span class="mini-avatar">▤</span><h3>No children linked yet</h3><p>Ask the school to link your account to your child’s record.</p></div></div>'; return; }
+      const blocks = await Promise.all(children.map(async (link) => {
+        const s = link.student;
+        let rows = '<tr><td colspan="3">Not yet assigned to a class.</td></tr>';
+        if (s.currentClassArmId) {
+          try {
+            const lessons = await window.SchoolOS.api('/class-arms/' + s.currentClassArmId + '/lessons');
+            rows = lessons.length ? lessons.map((l) => `<tr><td><strong>${l.title}</strong></td><td>${l.subject?.name || '—'}</td><td>${resourceChipsFor(l)}</td></tr>`).join('') : '<tr><td colspan="3">No lessons posted yet.</td></tr>';
+          } catch (err) { rows = `<tr><td colspan="3">Could not load (${err.message})</td></tr>`; }
+        }
+        return `<section class="data-card fee-child-card"><div class="data-toolbar"><div class="person-cell"><span class="mini-avatar">${window.SchoolOS.initialsOf(s.firstName + ' ' + s.lastName)}</span><div><strong>${s.firstName} ${s.lastName}</strong><small>${s.admissionNo}</small></div></div></div><table class="data-table"><thead><tr><th>Lesson</th><th>Subject</th><th>Resources</th></tr></thead><tbody>${rows}</tbody></table></section>`;
+      }));
+      container.innerHTML = `<div class="fee-child-grid">${blocks.join('')}</div>`;
+    } catch (err) { container.innerHTML = `<p class="modal-sub">Could not load your children (${err.message})</p>`; }
+  }
+
+  function pageLessonsOversight(label) {
+    return `<section class="page workspace-page" id="lessons"><div class="page-heading"><div><p class="eyebrow">Live from the API</p><h1>${label}</h1><p class="subtitle">Lessons posted across every class — view only.</p></div><span class="view-only-badge">View only</span></div><section class="data-card"><table class="data-table"><thead><tr><th>Lesson</th><th>Subject</th><th>Class</th><th>Teacher</th><th>Date</th><th>Resources</th></tr></thead><tbody id="realLessonsOversightBody"><tr><td colspan="6">Loading…</td></tr></tbody></table></section></section>`;
+  }
+  async function loadRealLessonsOversight() {
+    const tbody = document.getElementById('realLessonsOversightBody');
+    if (!tbody || !window.SchoolOS.getAccessToken()) return;
+    tbody.innerHTML = '<tr><td colspan="6">Loading…</td></tr>';
+    try {
+      const classes = await window.SchoolOS.api('/classes');
+      const arms = classes.flatMap((c) => (c.arms || []).map((a) => ({ id: a.id, label: c.name + ' · ' + a.name })));
+      if (!arms.length) { tbody.innerHTML = '<tr><td colspan="6">No classes yet.</td></tr>'; return; }
+      const lists = await Promise.all(arms.map((a) => window.SchoolOS.api('/class-arms/' + a.id + '/lessons').then((list) => list.map((l) => ({ ...l, armLabel: a.label }))).catch(() => [])));
+      const allLessons = lists.flat().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      tbody.innerHTML = allLessons.length ? allLessons.map((l) => `<tr><td><strong>${l.title}</strong></td><td>${l.subject?.name || '—'}</td><td>${l.armLabel}</td><td>${l.createdByStaffProfile?.user ? l.createdByStaffProfile.user.firstName + ' ' + l.createdByStaffProfile.user.lastName : '—'}</td><td>${new Date(l.createdAt).toDateString()}</td><td>${resourceChipsFor(l)}</td></tr>`).join('') : '<tr><td colspan="6">No lessons posted yet.</td></tr>';
+    } catch (err) { tbody.innerHTML = `<tr><td colspan="6">Could not load lessons (${err.message})</td></tr>`; }
+  }
+
   function pageLessons(label) {
-    return `<section class="page workspace-page" id="lessons"><div class="page-heading"><div><p class="eyebrow">Lessons</p><h1>${label}</h1><p class="subtitle">No lesson/resource data source is built yet — this isn't showing you fake data.</p></div></div><section class="data-card"><div class="empty-state"><span class="mini-avatar">▤</span><h3>Coming soon</h3><p>Lesson notes and resources haven't been built on the backend at all yet. Assignments (with attached resource links) already work — check that page instead.</p></div></section></section>`;
+    if (currentRole === 'teacher') return pageLessonsTeacher(label);
+    if (currentRole === 'student') return pageLessonsStudent(label);
+    if (currentRole === 'parent') return pageLessonsParent(label);
+    return pageLessonsOversight(label);
   }
 
   // ============ Content Approvals (stub) ============
@@ -704,6 +834,7 @@
     loadRealTeachers(); loadRealClasses(); loadRealSubjects(); loadRealAcademicsResults();
     loadRealTeacherResults(); loadRealParentResults(); loadRealTeacherAssignments(); loadRealStudentPortalData();
     loadRealMyClasses();
+    loadRealLessonsTeacher(); loadRealLessonsStudent(); loadRealLessonsParent(); loadRealLessonsOversight();
   }
   function showTab(id) {
     document.querySelectorAll('#academicsSections .workspace-page').forEach((p) => p.classList.toggle('visible', p.id === id));
@@ -718,7 +849,7 @@
   window.SchoolOS.modalOpeners = Object.assign(window.SchoolOS.modalOpeners || {}, {
     'new-teacher': openNewTeacherModal, 'new-class': openNewClassModal, 'new-subject': openNewSubjectModal,
     'add-marks': openAddMarksModal, 'new-assignment-real': openNewAssignmentRealModal, 'new-timetable': openNewTimetableModal,
-    'new-exam': openNewExamModal,
+    'new-exam': openNewExamModal, 'new-lesson': openNewLessonModal,
   });
 
   document.addEventListener('click', (e) => {
@@ -733,6 +864,7 @@
     const publishBtn = e.target.closest('[data-publish-real-result]'); if (publishBtn) publishRealResult(publishBtn.dataset.publishRealResult);
     const eg = e.target.closest('[data-edit-grade]'); if (eg) openEditGradeModal(eg.dataset.editGrade);
     const ec = e.target.closest('[data-edit-cell]'); if (ec) { const [r, c] = ec.dataset.editCell.split(',').map(Number); openEditTimetableCellModal(r, c); }
+    const adr = e.target.closest('[data-add-resource]'); if (adr) openAddResourceModal(adr.dataset.addResource);
     const ste = e.target.closest('[data-submit-teacher-exam]'); if (ste) submitTeacherExam(ste.dataset.submitTeacherExam);
     const ver = e.target.closest('[data-view-exam-results]'); if (ver) openExamResultsModal(ver.dataset.viewExamResults);
     const vor = e.target.closest('[data-view-own-result]'); if (vor) openOwnExamResultModal(vor.dataset.viewOwnResult);
@@ -756,6 +888,7 @@
       else if (id === 'academics-teachers' || id === 'teachers') openNewTeacherModal();
       else if (id === 'assignments' && currentRole === 'teacher') openNewAssignmentRealModal();
       else if (id === 'cbt-exams' && currentRole === 'teacher') openNewExamModal();
+      else if (id === 'lessons' && currentRole === 'teacher') openNewLessonModal();
       else window.SchoolOS.toast('Open a tab that supports creating a record');
     };
     renderForRole(role);
