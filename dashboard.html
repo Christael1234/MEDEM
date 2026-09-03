@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SchoolOS — Control Center</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css?v=modules-v8" />
+  </head>
+  <body>
+    <div id="shell-root"></div>
+
+    <template id="page-body">
+      <section class="page dashboard-page" id="dashboard">
+        <div class="page-heading"><div><p class="eyebrow" id="roleEyebrow">Tuesday, 12 August · Proprietor view</p><h1 id="greeting">Good morning, Adetola.</h1><p class="subtitle" id="roleSubtitle">Here’s what needs your attention at Greenfield.</p></div><button class="outline-button" id="roleAction">Export report <span>↓</span></button></div>
+        <section class="role-brief"><div class="role-symbol" id="roleSymbol">♔</div><div><p class="eyebrow">Your operating lens</p><h2 id="roleBriefTitle">Own the whole school, without chasing updates.</h2><p id="roleBriefText">Your dashboard brings finance, people and academic exceptions into one decision queue.</p></div><div class="role-permissions"><p>What you can do</p><div id="permissionChips"></div></div></section>
+        <section class="attention-section"><div class="section-title"><h2>Needs attention <span>5</span></h2><button>View all <span>→</span></button></div><div class="attention-grid">
+          <article class="attention-card urgent" data-scope="fees"><div class="card-icon">₦</div><div><p class="tag">Fees</p><h3>₦8.4m is overdue</h3><p>Families have missed payment by more than 30 days.</p><a href="fees.html">Review arrears <span>→</span></a></div></article>
+          <article class="attention-card warning" data-scope="payroll"><div class="card-icon">☷</div><div><p class="tag">Payroll</p><h3>August payroll is ready</h3><p>Awaiting your final approval.</p><a href="people.html">Review payroll <span>→</span></a></div></article>
+          <article class="attention-card neutral" data-scope="academics"><div class="card-icon">✓</div><div><p class="tag">Academics</p><h3>12 result entries missing</h3><p>JSS 2 Mathematics is incomplete.</p><a href="academics.html">View results <span>→</span></a></div></article>
+        </div></section>
+
+        <section class="metrics"><div class="section-title"><h2>School pulse</h2><div class="range-toggle"><button class="selected">This term</button><button>Last term</button></div></div><div class="metric-grid">
+          <article class="metric" data-scope="fees" data-sensitive="revenue"><p>Fee revenue</p><div class="metric-value">₦184.6m <span class="positive">↑ 6.8%</span></div><div class="progress"><span style="width:90%"></span></div><small>Of ₦205m expected this term</small></article>
+          <article class="metric" data-scope="students"><p>Students</p><div class="metric-value" id="dashStudentsCount">—</div><small>Attendance trend — coming soon</small></article>
+          <article class="metric" data-scope="staff"><p>Staff</p><div class="metric-value" id="dashStaffCount">—</div><small>Attendance & document tracking — coming soon</small></article>
+          <article class="metric" data-scope="payroll"><p>Payroll</p><div class="metric-value">₦32.7m <span class="negative">16% revenue</span></div><div class="mini-bars"><i style="height:52%"></i><i style="height:74%"></i><i style="height:65%"></i><i style="height:88%"></i><i style="height:76%"></i><i style="height:100%"></i></div><small>11% higher than last term</small></article>
+        </div></section>
+
+        <section class="lower-grid"><article class="card collection-card" data-scope="fees" data-sensitive="revenue"><div class="section-title"><div><p class="eyebrow">Money</p><h2>Fee collection</h2></div><button class="dots">•••</button></div><div class="collection-content"><div class="donut"><div><strong>72%</strong><small>collected</small></div></div><div class="legend"><p><i class="legend-green"></i>Collected <strong>₦18.6m</strong></p><p><i class="legend-amber"></i>Outstanding <strong>₦5.3m</strong></p><p><i class="legend-muted"></i>Not yet due <strong>₦1.9m</strong></p><a href="fees.html">See collection report <span>→</span></a></div></div></article>
+          <article class="card campus-card" data-scope="finance"><div class="section-title"><div><p class="eyebrow">Group view</p><h2>Campus comparison</h2></div><button>All campuses <span>⌄</span></button></div><table><thead><tr><th>Campus</th><th>Students</th><th>Collection</th><th>Attendance</th></tr></thead><tbody id="dashCampusRows"><tr><td colspan="4">Loading…</td></tr></tbody></table><a class="card-footer" href="reports.html">Compare all campuses <span>→</span></a></article></section>
+        <section class="role-workspace"><div class="section-title"><div><p class="eyebrow">Role workspace</p><h2 id="workspaceTitle">Your work, organised</h2></div><span class="demo-note">Interactive demo</span></div><div class="workspace-grid" id="workspaceGrid"></div></section>
+      </section>
+    </template>
+
+    <script src="shared.js?v=1"></script>
+    <script src="dashboard.js?v=1"></script>
+  </body>
+</html>

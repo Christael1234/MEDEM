@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SchoolOS — Students</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css?v=modules-v8" />
+  </head>
+  <body>
+    <div id="shell-root"></div>
+
+    <template id="page-body">
+      <section class="page workspace-page visible" id="students">
+        <div class="page-heading"><div><p class="eyebrow">Live from the API + demo pipeline</p><h1>Students &amp; Admissions</h1><p class="subtitle">Real student roster for the signed-in tenant, plus the applicant pipeline.</p></div></div>
+        <div class="screen-tabs" data-tabs>
+          <button class="active" data-tab="students">Students</button>
+          <button data-tab="admissions">Admissions</button>
+        </div>
+
+        <div data-tab-panel="students" class="tab-panel visible">
+          <div class="data-toolbar" style="border:0;padding:0 0 14px" id="studentsAddRow"></div>
+          <section class="data-card"><table class="data-table"><thead><tr><th>Student</th><th>Admission No.</th><th>Status</th><th></th></tr></thead><tbody id="realStudentsBody"><tr><td colspan="4">Loading students…</td></tr></tbody></table></section>
+        </div>
+
+        <div data-tab-panel="admissions" class="tab-panel">
+          <div class="screen-kpis" id="admissionsKpis"></div>
+          <div class="kanban-toolbar"><input aria-label="Search applicants" placeholder="Search applicants by name or class"><button class="filter-button">Campus: all ⌄</button><button class="filter-button">Class: all ⌄</button></div>
+          <div class="kanban" id="admissionsKanban"></div>
+        </div>
+      </section>
+    </template>
+
+    <script src="shared.js?v=1"></script>
+    <script src="students.js?v=1"></script>
+  </body>
+</html>

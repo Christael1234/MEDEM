@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SchoolOS — Control Center</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css?v=modules-v8" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="#" aria-label="SchoolOS home"><span class="brand-mark">S</span><span>School<span>OS</span></span></a>
+        <div class="school-switcher"><div class="school-avatar">GS</div><div><strong>Greenfield Schools</strong><small>Ikoyi Campus</small></div><span class="chevron">⌄</span></div>
+        <nav aria-label="Primary navigation" id="mainNav">
+          <p class="nav-label">Run school</p>
+          <a class="nav-link active" href="#dashboard" data-page="dashboard"><span>⌂</span>Control center</a>
+          <a class="nav-link" href="#students" data-page="students"><span>◉</span>Students</a>
+          <a class="nav-link" href="#academics" data-page="academics"><span>▤</span>Academics</a>
+          <a class="nav-link" href="#attendance" data-page="attendance"><span>✓</span>Attendance</a>
+          <p class="nav-label">Money</p>
+          <a class="nav-link" href="#fees" data-page="fees"><span>₦</span>Fees & payments <b>38</b></a>
+          <a class="nav-link" href="#finance" data-page="finance"><span>▥</span>Finance</a>
+          <p class="nav-label">People</p>
+          <a class="nav-link" href="#people" data-page="people"><span>♙</span>People & payroll <b class="amber">1</b></a>
+          <a class="nav-link" href="#messages" data-page="messages"><span>✦</span>Messages</a>
+          <p class="nav-label">Insights</p>
+          <a class="nav-link" href="#reports" data-page="reports"><span>◫</span>Reports</a>
+          <a class="nav-link" href="#settings" data-page="settings"><span>⚙</span>Settings</a>
+        </nav>
+        <div class="sidebar-bottom"><a href="#help">? &nbsp; Help & support</a><div class="profile"><div class="profile-photo">AO</div><div><strong>Adetola Okon</strong><small>Proprietor</small></div><span>···</span></div></div>
+      </aside>
+
+      <main>
+        <header class="topbar"><div class="context"><button>2025/2026 <span>⌄</span></button><i></i><button>Third term <span>⌄</span></button></div><div class="top-actions"><small id="sessionBadge" style="color:#6b7a74;font:500 11px var(--sans)"></small><label class="role-picker"><span>Viewing as</span><select id="roleSelect" aria-label="Choose demo role"></select></label><button class="icon-button" aria-label="Search">⌕</button><button class="icon-button notification" aria-label="Notifications">♧<em></em></button><button class="outline-button" id="logoutButton">Log out</button><button class="new-button" id="newButton">+&nbsp; Create new</button></div></header>
+
+        <section class="page dashboard-page" id="dashboard">
+          <div class="page-heading"><div><p class="eyebrow" id="roleEyebrow">Tuesday, 12 August · Proprietor view</p><h1 id="greeting">Good morning, Adetola.</h1><p class="subtitle" id="roleSubtitle">Here’s what needs your attention at Greenfield.</p></div><button class="outline-button" id="roleAction">Export report <span>↓</span></button></div>
+          <section class="role-brief"><div class="role-symbol" id="roleSymbol">♔</div><div><p class="eyebrow">Your operating lens</p><h2 id="roleBriefTitle">Own the whole school, without chasing updates.</h2><p id="roleBriefText">Your dashboard brings finance, people and academic exceptions into one decision queue.</p></div><div class="role-permissions"><p>What you can do</p><div id="permissionChips"></div></div></section>
+          <section class="attention-section"><div class="section-title"><h2>Needs attention <span>5</span></h2><button>View all <span>→</span></button></div><div class="attention-grid">
+            <article class="attention-card urgent" data-scope="fees"><div class="card-icon">₦</div><div><p class="tag">Fees</p><h3>₦8.4m is overdue</h3><p>Families have missed payment by more than 30 days.</p><a href="#fees">Review arrears <span>→</span></a></div></article>
+            <article class="attention-card warning" data-scope="payroll"><div class="card-icon">☷</div><div><p class="tag">Payroll</p><h3>August payroll is ready</h3><p>Awaiting your final approval.</p><a href="#payroll">Review payroll <span>→</span></a></div></article>
+            <article class="attention-card neutral" data-scope="academics"><div class="card-icon">✓</div><div><p class="tag">Academics</p><h3>12 result entries missing</h3><p>JSS 2 Mathematics is incomplete.</p><a href="#academics">View results <span>→</span></a></div></article>
+          </div></section>
+
+          <section class="metrics"><div class="section-title"><h2>School pulse</h2><div class="range-toggle"><button class="selected">This term</button><button>Last term</button></div></div><div class="metric-grid">
+            <article class="metric" data-scope="fees" data-sensitive="revenue"><p>Fee revenue</p><div class="metric-value">₦184.6m <span class="positive">↑ 6.8%</span></div><div class="progress"><span style="width:90%"></span></div><small>Of ₦205m expected this term</small></article>
+            <article class="metric" data-scope="students"><p>Students</p><div class="metric-value" id="dashStudentsCount">—</div><small>Attendance trend — coming soon</small></article>
+            <article class="metric" data-scope="staff"><p>Staff</p><div class="metric-value" id="dashStaffCount">—</div><small>Attendance & document tracking — coming soon</small></article>
+            <article class="metric" data-scope="payroll"><p>Payroll</p><div class="metric-value">₦32.7m <span class="negative">16% revenue</span></div><div class="mini-bars"><i style="height:52%"></i><i style="height:74%"></i><i style="height:65%"></i><i style="height:88%"></i><i style="height:76%"></i><i style="height:100%"></i></div><small>11% higher than last term</small></article>
+          </div></section>
+
+          <section class="lower-grid"><article class="card collection-card" data-scope="fees" data-sensitive="revenue"><div class="section-title"><div><p class="eyebrow">Money</p><h2>Fee collection</h2></div><button class="dots">•••</button></div><div class="collection-content"><div class="donut"><div><strong>72%</strong><small>collected</small></div></div><div class="legend"><p><i class="legend-green"></i>Collected <strong>₦18.6m</strong></p><p><i class="legend-amber"></i>Outstanding <strong>₦5.3m</strong></p><p><i class="legend-muted"></i>Not yet due <strong>₦1.9m</strong></p><a href="#fees">See collection report <span>→</span></a></div></div></article>
+            <article class="card campus-card" data-scope="finance"><div class="section-title"><div><p class="eyebrow">Group view</p><h2>Campus comparison</h2></div><button>All campuses <span>⌄</span></button></div><table><thead><tr><th>Campus</th><th>Students</th><th>Collection</th><th>Attendance</th></tr></thead><tbody id="dashCampusRows"><tr><td colspan="4">Loading…</td></tr></tbody></table><a class="card-footer" href="#reports">Compare all campuses <span>→</span></a></article></section>
+          <section class="role-workspace"><div class="section-title"><div><p class="eyebrow">Role workspace</p><h2 id="workspaceTitle">Your work, organised</h2></div><span class="demo-note">Interactive demo</span></div><div class="workspace-grid" id="workspaceGrid"></div></section>
+        </section>
+
+        <div id="workspacePages" aria-live="polite"></div>
+      </main>
+      <nav class="mobile-bottom-nav" id="mobileBottomNav" aria-label="Mobile navigation"></nav>
+    </div>
+    <div class="modal-overlay" id="modalOverlay" style="display:none"><div class="modal-box" id="modalBox"></div></div>
+
+    <div class="modal-overlay" id="loginOverlay" style="display:none">
+      <div class="modal-box">
+        <p class="eyebrow">SchoolOS</p>
+        <h2>Sign in</h2>
+        <p class="modal-sub">Choose your role, then sign in with your school email and password.</p>
+
+        <div class="login-role-grid" id="loginRoleGrid">
+          <button type="button" class="login-role-card" data-role="student"><span class="login-role-icon">◉</span><strong>Student</strong></button>
+          <button type="button" class="login-role-card" data-role="teacher"><span class="login-role-icon">✎</span><strong>Teacher</strong></button>
+          <button type="button" class="login-role-card" data-role="staff"><span class="login-role-icon">♙</span><strong>Staff</strong></button>
+          <button type="button" class="login-role-card" data-role="admin"><span class="login-role-icon">♔</span><strong>Admin</strong></button>
+        </div>
+
+        <form id="loginForm">
+          <div class="form-field">
+            <label for="loginEmail">Email</label>
+            <input type="email" id="loginEmail" required autocomplete="username" placeholder="you@greenfield.test" />
+          </div>
+          <div class="form-field">
+            <label for="loginPassword">Password</label>
+            <input type="password" id="loginPassword" required autocomplete="current-password" />
+          </div>
+          <p class="modal-sub" id="loginHint" style="margin:-8px 0 14px"></p>
+          <p id="loginError" style="color:#b3261e;font:500 12px var(--sans);min-height:16px;margin:0 0 8px"></p>
+          <div class="form-actions">
+            <button type="submit" class="new-button" id="loginSubmit">Sign in</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script src="auth-bridge.js?v=4"></script>
+    <script src="app.js?v=modules-v15"></script>
+  </body>
+</html>

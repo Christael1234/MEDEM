@@ -1,0 +1,776 @@
+// SchoolOS — Prisma schema for Phase 0 (Foundation) + Phase 1 (Core School)
+//
+// See CLAUDE.md for the rules this schema encodes:
+// - every tenant-owned table carries tenantId, indexed
+// - money/decimal, state machines, and audit logging land in later phases,
+//   but the shell (AuditLog, NumberingSequence) is built now
+// - nothing here should make Phase 2+ (fees, payroll, HR) awkward to attach
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Platform / Foundation
+// ─────────────────────────────────────────────────────────────────────────
+
+/// A school group. All tenant-owned records reference tenantId, either
+/// directly or transitively — never trust a client-supplied tenantId;
+/// it must come from the authenticated session.
+model Tenant {
+  id        String       @id @default(uuid())
+  name      String
+  slug      String       @unique
+  status    TenantStatus @default(ACTIVE)
+  timezone  String       @default("Africa/Lagos")
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  campuses           Campus[]
+  users              User[]
+  academicSessions   AcademicSession[]
+  schoolClasses      SchoolClass[]
+  students           Student[]
+  guardians          Guardian[]
+  staffProfiles      StaffProfile[]
+  subjects           Subject[]
+  attendanceRecords  AttendanceRecord[]
+  results            Result[]
+  auditLogs          AuditLog[]
+  numberingSequences NumberingSequence[]
+
+  notifications     Notification[]
+  messageTemplates  MessageTemplate[]
+  communicationLogs CommunicationLog[]
+  assignments       Assignment[]
+  lessons           Lesson[]
+  announcements     Announcement[]
+
+  @@map("tenants")
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+/// A physical campus/branch under a Tenant. A school group with a single
+/// site still gets exactly one Campus row — nothing downstream should
+/// special-case "no campus."
+model Campus {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  address   String?
+  isPrimary Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userCampusScopes  UserCampusScope[]
+  schoolClasses     SchoolClass[]
+  students          Student[]
+  staffProfiles     StaffProfile[]
+  attendanceRecords AttendanceRecord[]
+  announcements     Announcement[]
+
+  @@index([tenantId])
+  @@map("campuses")
+}
+
+/// SUPER_ADMIN is a platform role and is the only role that may have
+/// tenantId = null (see User.tenantId being optional). Every other role
+/// belongs to exactly one tenant.
+enum Role {
+  SUPER_ADMIN
+  PROPRIETOR
+  PRINCIPAL
+  BURSAR
+  HR_ADMIN
+  TEACHER
+  PARENT
+  STUDENT
+  TRANSPORT_STAFF
+  LIBRARY_STAFF
+  OTHER_STAFF
+  COMPLIANCE_ADMIN
+}
+
+/// Login identity. Role grants module-level actions (enforced in app code
+/// via guards, not in the schema); UserCampusScope narrows that further to
+/// specific campuses. A Proprietor with no scope rows has access to every
+/// campus in their tenant — narrower roles (e.g. Bursar for one campus)
+/// get explicit UserCampusScope rows.
+model User {
+  id           String  @id @default(uuid())
+  tenantId     String? // null only for SUPER_ADMIN
+  tenant       Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role         Role
+  email        String  @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  phone        String?
+  isActive     Boolean @default(true)
+
+  // MFA — mandatory for PROPRIETOR, BURSAR, HR_ADMIN, SUPER_ADMIN at the
+  // application layer; schema supports it for every role.
+  mfaEnabled Boolean @default(false)
+  mfaSecret  String?
+
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  campusScopes    UserCampusScope[]
+  refreshTokens   RefreshToken[]
+  auditLogs       AuditLog[]        @relation("AuditActor")
+  staffProfile    StaffProfile?
+  guardianProfile Guardian?
+  studentProfile  Student?          @relation("StudentUserAccount")
+
+  recordedAttendance AttendanceRecord[] @relation("AttendanceRecordedBy")
+  enteredResults     Result[]           @relation("ResultEnteredBy")
+
+  notificationsReceived  Notification[]     @relation("NotificationRecipient")
+  communicationsSent     CommunicationLog[] @relation("CommunicationSender")
+  communicationsReceived CommunicationLog[] @relation("CommunicationRecipient")
+  announcementsCreated   Announcement[]
+
+  @@index([tenantId])
+  @@map("users")
+}
+
+/// Explicit campus scoping for a user within their tenant. Absence of any
+/// row for a user with a group-wide role (Proprietor) means "all campuses";
+/// for narrower roles, absence means "no campus access" (deny by default).
+model UserCampusScope {
+  id       String @id @default(uuid())
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campusId String
+  campus   Campus @relation(fields: [campusId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, campusId])
+  @@index([campusId])
+  @@map("user_campus_scopes")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+/// Immutable audit trail. Every write to attendance corrections, result
+/// approvals, permission changes, and (in later phases) payments/payroll
+/// must produce a row here. Never update or delete rows in this table from
+/// application code.
+model AuditLog {
+  id         String   @id @default(uuid())
+  tenantId   String?
+  tenant     Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actorId    String?
+  actor      User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  action     String // e.g. "ATTENDANCE_CORRECTED", "RESULT_PUBLISHED", "ROLE_CHANGED"
+  entityType String // e.g. "AttendanceRecord", "Result", "User"
+  entityId   String
+  before     Json?
+  after      Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, entityType, entityId])
+  @@index([actorId])
+  @@map("audit_logs")
+}
+
+/// Backing store for generated, gap-free-per-scope numbers: student IDs,
+/// invoice numbers, receipt numbers, payroll run numbers. Fees/payroll
+/// modules land in later phases but should consume this table rather than
+/// each inventing its own counter.
+model NumberingSequence {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  scope     String // e.g. "STUDENT_ID", "INVOICE", "RECEIPT", "PAYROLL_RUN"
+  prefix    String   @default("")
+  nextValue Int      @default(1)
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, scope])
+  @@map("numbering_sequences")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Core School — Academic structure
+// ─────────────────────────────────────────────────────────────────────────
+
+model AcademicSession {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String // e.g. "2025/2026"
+  startDate DateTime
+  endDate   DateTime
+  isCurrent Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  terms               Term[]
+  studentClassHistory StudentClassHistory[]
+  results             Result[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("academic_sessions")
+}
+
+model Term {
+  id                String          @id @default(uuid())
+  academicSessionId String
+  academicSession   AcademicSession @relation(fields: [academicSessionId], references: [id], onDelete: Cascade)
+  name              TermName
+  startDate         DateTime
+  endDate           DateTime
+  isCurrent         Boolean         @default(false)
+
+  attendanceRecords AttendanceRecord[]
+  results           Result[]
+
+  @@unique([academicSessionId, name])
+  @@index([academicSessionId])
+  @@map("terms")
+}
+
+enum TermName {
+  FIRST
+  SECOND
+  THIRD
+}
+
+model SchoolClass {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  campusId  String
+  campus    Campus   @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  name      String // e.g. "JSS 2"
+  order     Int      @default(0) // for sorting class levels
+  createdAt DateTime @default(now())
+
+  arms               ClassArm[]
+  teacherAssignments TeacherSubjectAssignment[]
+
+  @@unique([campusId, name])
+  @@index([tenantId])
+  @@map("school_classes")
+}
+
+model ClassArm {
+  id             String        @id @default(uuid())
+  schoolClassId  String
+  schoolClass    SchoolClass   @relation(fields: [schoolClassId], references: [id], onDelete: Cascade)
+  name           String // e.g. "Gold"
+  classTeacherId String?
+  classTeacher   StaffProfile? @relation(fields: [classTeacherId], references: [id], onDelete: SetNull)
+  createdAt      DateTime      @default(now())
+
+  students            Student[]
+  attendanceRecords   AttendanceRecord[]
+  studentClassHistory StudentClassHistory[]
+  assignments         Assignment[]
+  lessons             Lesson[]
+
+  @@unique([schoolClassId, name])
+  @@map("class_arms")
+}
+
+model Subject {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  code      String?
+  createdAt DateTime @default(now())
+
+  teacherAssignments TeacherSubjectAssignment[]
+  results            Result[]
+  assignments        Assignment[]
+  lessons            Lesson[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("subjects")
+}
+
+/// Which teacher may enter/submit results and take attendance for which
+/// class + subject. This is the scoping table the Teacher role's guards
+/// should check against — not a hardcoded "teacher owns a class" field.
+model TeacherSubjectAssignment {
+  id             String       @id @default(uuid())
+  staffProfileId String
+  staffProfile   StaffProfile @relation(fields: [staffProfileId], references: [id], onDelete: Cascade)
+  schoolClassId  String
+  schoolClass    SchoolClass  @relation(fields: [schoolClassId], references: [id], onDelete: Cascade)
+  subjectId      String
+  subject        Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@unique([staffProfileId, schoolClassId, subjectId])
+  @@index([schoolClassId])
+  @@map("teacher_subject_assignments")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// People — Staff, Students, Guardians
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Thin shell for now — deep HR fields (contracts, qualifications,
+/// documents, leave, salary structure) land in Phase 3. Every staff member
+/// with system access has a linked User; give this table a stable id
+/// other modules (payroll, HR) can reference later without migration pain.
+model StaffProfile {
+  id             String    @id @default(uuid())
+  tenantId       String
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId         String    @unique
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campusId       String
+  campus         Campus    @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  staffId        String // human-facing employee number, generated via NumberingSequence
+  employmentType String? // e.g. "full_time", "part_time", "contract" — kept loose pre-Phase-3
+  department     String?
+  position       String?
+  dateJoined     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  classArmsLed       ClassArm[]
+  teacherAssignments TeacherSubjectAssignment[]
+  attendanceRecords  AttendanceRecord[] // as recorder is on User; this is for staff's own attendance in later phases
+  assignmentsCreated Assignment[]
+  lessonsCreated     Lesson[]
+
+  @@unique([tenantId, staffId])
+  @@index([tenantId])
+  @@index([campusId])
+  @@map("staff_profiles")
+}
+
+enum StudentStatus {
+  APPLICANT
+  ACTIVE
+  SUSPENDED
+  WITHDRAWN
+  GRADUATED
+  ARCHIVED
+}
+
+model Student {
+  id          String        @id @default(uuid())
+  tenantId    String
+  tenant      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  campusId    String
+  campus      Campus        @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  admissionNo String // human-facing, generated via NumberingSequence
+  status      StudentStatus @default(ACTIVE)
+
+  firstName   String
+  lastName    String
+  middleName  String?
+  dateOfBirth DateTime?
+  gender      String?
+  photoUrl    String?
+
+  medicalNotes          String?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+
+  currentClassArmId String?
+  currentClassArm   ClassArm? @relation(fields: [currentClassArmId], references: [id], onDelete: SetNull)
+
+  // Optional login for the Student portal (Phase 4); nullable because many
+  // students in Phase 1 won't have portal access yet.
+  userId String? @unique
+  user   User?   @relation("StudentUserAccount", fields: [userId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  guardianLinks     StudentGuardian[]
+  attendanceRecords AttendanceRecord[]
+  results           Result[]
+  classHistory      StudentClassHistory[]
+
+  @@unique([tenantId, admissionNo])
+  @@index([tenantId])
+  @@index([campusId])
+  @@index([currentClassArmId])
+  @@map("students")
+}
+
+/// Promotion/transfer trail. One row per (student, academic session) at
+/// minimum; also used to record mid-session class/arm transfers.
+model StudentClassHistory {
+  id                String          @id @default(uuid())
+  studentId         String
+  student           Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicSessionId String
+  academicSession   AcademicSession @relation(fields: [academicSessionId], references: [id], onDelete: Cascade)
+  classArmId        String
+  classArm          ClassArm        @relation(fields: [classArmId], references: [id], onDelete: Cascade)
+  effectiveFrom     DateTime        @default(now())
+  reason            String? // e.g. "promotion", "transfer", "initial enrollment"
+
+  @@index([studentId])
+  @@index([academicSessionId])
+  @@map("student_class_history")
+}
+
+/// A parent/guardian account. May have a login (Parent portal, Phase 4-ish
+/// but the account shell is useful now) and links to one or more Students
+/// via StudentGuardian, with a relationship type per link.
+model Guardian {
+  id       String  @id @default(uuid())
+  tenantId String
+  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId   String? @unique
+  user     User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  firstName String
+  lastName  String
+  email     String?
+  phone     String?
+  address   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  studentLinks StudentGuardian[]
+
+  @@index([tenantId])
+  @@map("guardians")
+}
+
+enum GuardianRelationship {
+  MOTHER
+  FATHER
+  GRANDPARENT
+  SIBLING
+  LEGAL_GUARDIAN
+  OTHER
+}
+
+/// Join table supporting multiple guardians per student and multiple
+/// children per guardian. isPrimary marks the main contact/payer.
+model StudentGuardian {
+  id           String               @id @default(uuid())
+  studentId    String
+  student      Student              @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  guardianId   String
+  guardian     Guardian             @relation(fields: [guardianId], references: [id], onDelete: Cascade)
+  relationship GuardianRelationship
+  isPrimary    Boolean              @default(false)
+
+  @@unique([studentId, guardianId])
+  @@index([guardianId])
+  @@map("student_guardians")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Attendance
+// ─────────────────────────────────────────────────────────────────────────
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+/// Corrections must not overwrite history — write a new record with
+/// correctionOf pointing at the original, correctionReason populated, and
+/// an AuditLog entry. Application code enforces this; the schema just
+/// carries the fields.
+model AttendanceRecord {
+  id               String           @id @default(uuid())
+  tenantId         String
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  campusId         String
+  campus           Campus           @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  studentId        String
+  student          Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  classArmId       String
+  classArm         ClassArm         @relation(fields: [classArmId], references: [id], onDelete: Cascade)
+  termId           String
+  term             Term             @relation(fields: [termId], references: [id], onDelete: Cascade)
+  date             DateTime         @db.Date
+  status           AttendanceStatus
+  recordedById     String
+  recordedBy       User             @relation("AttendanceRecordedBy", fields: [recordedById], references: [id])
+  correctionOf     String?
+  correctionReason String?
+  staffProfileId   String? // set when this row is a staff attendance record (future use)
+  staffProfile     StaffProfile?    @relation(fields: [staffProfileId], references: [id], onDelete: SetNull)
+  createdAt        DateTime         @default(now())
+
+  @@unique([studentId, date, correctionOf], map: "uniq_student_date_correction")
+  @@index([tenantId, campusId, date])
+  @@index([classArmId, date])
+  @@map("attendance_records")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Results (basic — full grading-scale configuration is a later refinement)
+// ─────────────────────────────────────────────────────────────────────────
+
+enum ResultStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  PUBLISHED
+}
+
+/// State machine: DRAFT -> SUBMITTED -> APPROVED -> PUBLISHED. Teachers may
+/// create/submit; only Principal/Proprietor may approve or publish —
+/// enforce in guards, not here. Any status transition must be audited.
+model Result {
+  id                String          @id @default(uuid())
+  tenantId          String
+  tenant            Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  studentId         String
+  student           Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subjectId         String
+  subject           Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  academicSessionId String
+  academicSession   AcademicSession @relation(fields: [academicSessionId], references: [id], onDelete: Cascade)
+  termId            String
+  term              Term            @relation(fields: [termId], references: [id], onDelete: Cascade)
+
+  continuousAssessmentScore Decimal? @db.Decimal(5, 2)
+  examScore                 Decimal? @db.Decimal(5, 2)
+  totalScore                Decimal? @db.Decimal(5, 2)
+  grade                     String?
+  teacherComment            String?
+
+  status      ResultStatus @default(DRAFT)
+  enteredById String
+  enteredBy   User         @relation("ResultEnteredBy", fields: [enteredById], references: [id])
+  submittedAt DateTime?
+  approvedAt  DateTime?
+  publishedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentId, subjectId, termId])
+  @@index([tenantId])
+  @@index([termId, subjectId])
+  @@map("results")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Phase 4 — Portals & Communication
+// See PHASE_4_PORTALS_COMMUNICATION.md. Built on top of Phase 0+1 only;
+// nothing here assumes fees/payroll (Phase 2/3) exist.
+// ─────────────────────────────────────────────────────────────────────────
+
+enum CommunicationChannel {
+  IN_APP
+  EMAIL
+  SMS
+  WHATSAPP
+}
+
+enum CommunicationStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  FAILED
+}
+
+enum AnnouncementAudience {
+  SCHOOL
+  CAMPUS
+  CLASS
+  ARM
+  PARENT_GROUP
+  INDIVIDUAL
+}
+
+/// In-app notification a user sees in their portal. Always-on regardless
+/// of which external providers (if any) are configured.
+model Notification {
+  id              String    @id @default(uuid())
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  recipientUserId String
+  recipient       User      @relation("NotificationRecipient", fields: [recipientUserId], references: [id], onDelete: Cascade)
+  type            String // e.g. "RESULT_PUBLISHED", "ATTENDANCE_ALERT", "ANNOUNCEMENT"
+  title           String
+  body            String
+  entityType      String?
+  entityId        String?
+  readAt          DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([tenantId])
+  @@index([recipientUserId, readAt])
+  @@map("notifications")
+}
+
+/// Reusable message template for announcements, notices, and (later)
+/// payment reminders. `placeholders` documents the merge fields the
+/// template body expects (e.g. ["studentName", "className"]).
+model MessageTemplate {
+  id           String               @id @default(uuid())
+  tenantId     String
+  tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name         String
+  channel      CommunicationChannel
+  subject      String?
+  body         String
+  placeholders Json                 @default("[]")
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  communicationLogs CommunicationLog[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("message_templates")
+}
+
+/// One row per actual send attempt — the delivery-status/history record
+/// the spec asks for. Distinct from AuditLog: this is operational
+/// communication history, not the sensitive-action audit trail.
+model CommunicationLog {
+  id                String               @id @default(uuid())
+  tenantId          String
+  tenant            Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  senderUserId      String?
+  sender            User?                @relation("CommunicationSender", fields: [senderUserId], references: [id], onDelete: SetNull)
+  channel           CommunicationChannel
+  templateId        String?
+  template          MessageTemplate?     @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  recipientUserId   String?
+  recipient         User?                @relation("CommunicationRecipient", fields: [recipientUserId], references: [id], onDelete: SetNull)
+  recipientContact  String? // email/phone snapshot at send time
+  targetDescription String // e.g. "JSS 2 Gold parents"
+  subject           String?
+  body              String
+  status            CommunicationStatus  @default(QUEUED)
+  providerRef       String?
+  dedupeKey         String // entityType+entityId+eventType+recipientId — idempotent sends
+  sentAt            DateTime?
+  createdAt         DateTime             @default(now())
+
+  @@unique([tenantId, dedupeKey])
+  @@index([tenantId, createdAt])
+  @@index([recipientUserId])
+  @@map("communication_logs")
+}
+
+/// Thin: a teacher posts an assignment to a class; students/parents can
+/// view it. No submission/grading pipeline yet.
+model Assignment {
+  id                      String        @id @default(uuid())
+  tenantId                String
+  tenant                  Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  classArmId              String
+  classArm                ClassArm      @relation(fields: [classArmId], references: [id], onDelete: Cascade)
+  subjectId               String?
+  subject                 Subject?      @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  // Nullable: PROPRIETOR/PRINCIPAL can post administratively without
+  // being a teacher (no StaffProfile of their own) — see AssignmentsService.
+  createdByStaffProfileId String?
+  createdByStaffProfile   StaffProfile? @relation(fields: [createdByStaffProfileId], references: [id], onDelete: SetNull)
+  title                   String
+  description             String
+  resourceUrl             String?
+  dueDate                 DateTime?
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
+
+  @@index([tenantId])
+  @@index([classArmId])
+  @@map("assignments")
+}
+
+/// A teacher's lesson note for one of their assigned (class arm, subject)
+/// pairs, with zero or more attached resources. Teacher-authored only —
+/// unlike Assignment, PROPRIETOR/PRINCIPAL don't post lessons themselves,
+/// only view them (see LessonsService).
+model Lesson {
+  id                      String       @id @default(uuid())
+  tenantId                String
+  tenant                  Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  classArmId              String
+  classArm                ClassArm     @relation(fields: [classArmId], references: [id], onDelete: Cascade)
+  subjectId               String
+  subject                 Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  createdByStaffProfileId String
+  createdByStaffProfile   StaffProfile @relation(fields: [createdByStaffProfileId], references: [id], onDelete: Cascade)
+  title                   String
+  notes                   String?
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @updatedAt
+
+  resources LessonResource[]
+
+  @@index([tenantId])
+  @@index([classArmId])
+  @@map("lessons")
+}
+
+/// One hop from tenantId — reached only through its parent Lesson, which
+/// is itself tenant-scoped. Same pattern as ClassArm/TeacherSubjectAssignment;
+/// see tenant-scoping.extension.ts's doc comment for why this deliberately
+/// has no tenantId column of its own.
+model LessonResource {
+  id        String   @id @default(uuid())
+  lessonId  String
+  lesson    Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  name      String
+  type      String
+  url       String?
+  createdAt DateTime @default(now())
+
+  @@index([lessonId])
+  @@map("lesson_resources")
+}
+
+/// Drives bulk announcements. `audienceRefId` is interpreted per
+/// `audience` (a Campus id, SchoolClass id, ClassArm id, etc.) —
+/// recipients are resolved from the tenant-scoped roster at send time,
+/// never accepted as a client-supplied list (rule #2 in this phase's doc).
+model Announcement {
+  id              String               @id @default(uuid())
+  tenantId        String
+  tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  campusId        String?
+  campus          Campus?              @relation(fields: [campusId], references: [id], onDelete: SetNull)
+  audience        AnnouncementAudience
+  audienceRefId   String?
+  title           String
+  body            String
+  createdByUserId String
+  createdByUser   User                 @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
+  publishedAt     DateTime?
+  createdAt       DateTime             @default(now())
+
+  @@index([tenantId])
+  @@map("announcements")
+}

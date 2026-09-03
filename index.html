@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SchoolOS — Sign in</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css?v=modules-v8" />
+  </head>
+  <body style="background:var(--canvas)">
+    <div class="modal-overlay" id="loginOverlay" style="display:flex;position:static;min-height:100vh;background:var(--canvas)">
+      <div class="modal-box">
+        <p class="eyebrow">SchoolOS</p>
+        <h2>Sign in</h2>
+        <p class="modal-sub">Choose your role, then sign in with your school email and password.</p>
+
+        <div class="login-role-grid" id="loginRoleGrid">
+          <button type="button" class="login-role-card" data-role="student"><span class="login-role-icon">◉</span><strong>Student</strong></button>
+          <button type="button" class="login-role-card" data-role="teacher"><span class="login-role-icon">✎</span><strong>Teacher</strong></button>
+          <button type="button" class="login-role-card" data-role="staff"><span class="login-role-icon">♙</span><strong>Staff</strong></button>
+          <button type="button" class="login-role-card" data-role="admin"><span class="login-role-icon">♔</span><strong>Admin</strong></button>
+        </div>
+
+        <form id="loginForm">
+          <div class="form-field">
+            <label for="loginEmail">Email</label>
+            <input type="email" id="loginEmail" required autocomplete="username" placeholder="you@greenfield.test" />
+          </div>
+          <div class="form-field">
+            <label for="loginPassword">Password</label>
+            <input type="password" id="loginPassword" required autocomplete="current-password" />
+          </div>
+          <p class="modal-sub" id="loginHint" style="margin:-8px 0 14px"></p>
+          <p id="loginError" style="color:#b3261e;font:500 12px var(--sans);min-height:16px;margin:0 0 8px"></p>
+          <div class="form-actions">
+            <button type="submit" class="new-button" id="loginSubmit">Sign in</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script src="shared.js?v=1"></script>
+  </body>
+</html>
