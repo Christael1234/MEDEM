@@ -19,8 +19,33 @@
   const REFRESH_KEY = 'schoolos_refresh_token';
   const USER_KEY = 'schoolos_user';
   const ROLE_KEY = 'schoolos_active_role';
+  const SIDEBAR_COLLAPSED_KEY = 'schoolos_sidebar_collapsed';
   const SESSION_LABEL_KEY = 'schoolos_session_label';
   const TERM_LABEL_KEY = 'schoolos_term_label';
+  const BRAND_COLORS_KEY = 'schoolos_brand_colors';
+
+  // Paint any previously-fetched brand colors immediately, before the
+  // shell (or even the rest of this script) finishes loading — avoids a
+  // flash of the default green on every page navigation, since this is a
+  // multi-page app that remounts the shell from scratch each time.
+  // mountShell() below still fetches the live values and re-applies (and
+  // re-caches) them, this is just the instant-paint step.
+  try {
+    const cached = JSON.parse(localStorage.getItem(BRAND_COLORS_KEY) || 'null');
+    if (cached) applyBrandColors(cached);
+  } catch (err) { /* corrupt cache, ignore — mountShell's live fetch still applies real colors */ }
+
+  function applyBrandColors(colors) {
+    if (colors.primaryColor) document.documentElement.style.setProperty('--brand-primary', colors.primaryColor);
+    if (colors.sidebarColor) document.documentElement.style.setProperty('--brand-sidebar', colors.sidebarColor);
+  }
+
+  async function refreshBrandColors() {
+    let branding;
+    try { branding = await api('/tenants/me/branding'); } catch (err) { return; }
+    applyBrandColors(branding);
+    localStorage.setItem(BRAND_COLORS_KEY, JSON.stringify({ primaryColor: branding.primaryColor, sidebarColor: branding.sidebarColor }));
+  }
 
   const ROLE_MAP = {
     SUPER_ADMIN: 'superadmin', PROPRIETOR: 'proprietor', PRINCIPAL: 'principal',
@@ -38,7 +63,7 @@
   // object. Item 0 is always "home" for that role and always resolves to
   // dashboard.html; everything else is looked up in SLUG_FILE_MAP.
   const navs = {
-    proprietor: ['Dashboard', 'Schools / Campuses', 'Admissions', 'Students', 'Teachers', 'Academics', 'Content Approvals', 'Attendance', 'Fees & payments', 'Finance', 'People & payroll', 'Messages', 'Library', 'Reports', 'Settings'],
+    proprietor: ['Dashboard', 'Admissions', 'Students', 'Teachers', 'Academics', 'Content Approvals', 'Attendance', 'Fees & payments', 'Finance', 'People & payroll', 'Messages', 'Library', 'Reports', 'Settings', 'Schools / Campuses'],
     principal: ['Dashboard', 'Admissions', 'Students', 'Academics', 'Lessons', 'Content Approvals', 'Attendance', 'Teachers', 'Timetable', 'Exams & Results', 'Fees', 'Finance', 'Payroll', 'Parents', 'Communication', 'Library', 'Reports', 'Settings'],
     bursar: ['Dashboard', 'Admissions', 'Students', 'Fees', 'Invoices', 'Payments', 'Arrears', 'Reconciliation', 'Expenses', 'Payroll', 'Reports'],
     hr: ['Dashboard', 'Admissions', 'Students', 'Employees', 'Attendance', 'Leave', 'Documents', 'Performance', 'Recruitment', 'Payroll', 'Reports'],
@@ -49,8 +74,30 @@
     superadmin: ['Platform Dashboard', 'Schools', 'Subscriptions', 'Users', 'Support', 'System Health', 'Integrations', 'Audit Logs', 'Feature Flags', 'Settings'],
     compliance: ['Dashboard', 'Statutory Rules', 'Compliance Review', 'Payroll Audit Trail', 'Reports'],
   };
-  const icons = ['⌂', '◉', '▤', '✓', '₦', '▥', '♙', '✦', '◫', '⚙', '⌘'];
   const slug = (v) => v.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+
+  // One icon per concept, keyed by slug — not by position, so the same
+  // item always gets the same icon no matter which role's list it's in
+  // (a plain per-index cycle previously gave unrelated items matching
+  // icons just because they landed at the same array position).
+  const ICONS_BY_SLUG = {
+    'schools-campuses': '◫', admissions: '◈', 'apply-for-admission': '◈',
+    students: '♙', classes: '▤', 'my-classes': '▤', teachers: '✎', academics: '✎',
+    'content-approvals': '✦', lessons: '✎', timetable: '⏲', 'exams-and-results': '▤', results: '▤',
+    assignments: '⌘', 'cbt-exams': '⌘', attendance: '✓',
+    fees: '₦', 'fees-and-payments': '₦', invoices: '₦', payments: '₦', arrears: '₦', reconciliation: '₦', expenses: '₦', finance: '₦', subscriptions: '₦',
+    'people-and-payroll': '♙', payroll: '♙', employees: '♙', users: '♙', profile: '♙',
+    leave: '⏱', documents: '▥', performance: '✦', recruitment: '◈',
+    'payroll-audit-trail': '⚖', 'statutory-rules': '⚖', 'compliance-review': '⚖',
+    messages: '✉', communication: '✉', parents: '✉', support: '✉',
+    reports: '☰', 'audit-logs': '☰', settings: '⚙', 'system-health': '⚙', integrations: '⚙', 'feature-flags': '⚙',
+    library: '▥', 'transport-routes': '⚑', 'vehicles-and-drivers': '⚑', incidents: '⚑', notices: '⚑',
+    'student-manifest': '▤', schools: '◫', 'my-children': '♥', more: '⌘',
+  };
+  function iconFor(item, index) {
+    if (index === 0) return '⌂'; // item 0 always resolves to dashboard.html regardless of label
+    return ICONS_BY_SLUG[slug(item)] || '•';
+  }
 
   // Every nav-item slug (across every role, minus each role's item-0
   // "home" which is hardcoded to dashboard.html) mapped to the page file
@@ -154,9 +201,10 @@
   }
   function logout() { clearSession(); location.href = 'index.html'; }
 
+  // Role is always the signed-in user's real role now that the "Viewing
+  // as" switcher is gone — no more honoring a stale localStorage override
+  // from earlier testing.
   function getActiveRole() {
-    const stored = localStorage.getItem(ROLE_KEY);
-    if (stored && navs[stored]) return stored;
     const user = getUser();
     return (user && ROLE_MAP[user.role]) || 'proprietor';
   }
@@ -193,10 +241,174 @@
       new FormData(e.target).forEach((v, k) => { data[k] = k in data ? [].concat(data[k], v) : v; });
       onSubmit(data); closeModal();
     };
-    openModal(`<p class="eyebrow">${eyebrow}</p><h2>${title}</h2>${sub ? `<p class="modal-sub">${sub}</p>` : ''}<form onsubmit="__formSubmit(event)">${fields.map(fieldHtml).join('')}<div class="modal-upload">📎 Attach a file (optional, demo only)</div><div class="form-actions"><button type="button" class="outline-button" data-modal-close>Cancel</button><button type="submit" class="new-button">${submitLabel}</button></div></form>`);
+    openModal(`<p class="eyebrow">${eyebrow}</p><h2>${title}</h2>${sub ? `<p class="modal-sub">${sub}</p>` : ''}<form onsubmit="__formSubmit(event)">${fields.map(fieldHtml).join('')}<div class="form-actions"><button type="button" class="outline-button" data-modal-close>Cancel</button><button type="submit" class="new-button">${submitLabel}</button></div></form>`);
   }
   function detailModal({ eyebrow, title, sub, rows, footer }) {
     openModal(`<p class="eyebrow">${eyebrow}</p><h2>${title}</h2>${sub ? `<p class="modal-sub">${sub}</p>` : ''}<div class="modal-detail">${rows.map((r) => `<div class="modal-detail-row"><span>${r[0]}</span><strong>${r[1]}</strong></div>`).join('')}</div>${footer || '<div class="form-actions"><button class="outline-button" data-modal-close>Close</button></div>'}`);
+  }
+
+  // ---- academic session / term (topbar) ----
+  const TERM_ORDER = ['FIRST', 'SECOND', 'THIRD'];
+  const TERM_LABELS = { FIRST: 'First term', SECOND: 'Second term', THIRD: 'Third term' };
+  const SESSION_TERM_ROLES = new Set(['PROPRIETOR', 'PRINCIPAL']);
+
+  /** Paints the topbar year/term buttons from real data (falling back to
+   * whatever was cached in localStorage from the last successful load, so
+   * there's no flash of placeholder text on every page navigation — this
+   * is a multi-page app, so the shell remounts from scratch each time). */
+  async function refreshSessionTermBadge() {
+    let current;
+    try { current = await api('/academic-sessions/current'); } catch (err) { return; }
+    const yearBtn = document.getElementById('sessionYearBtn');
+    const termBtn = document.getElementById('sessionTermBtn');
+    const yearLabel = current.session ? current.session.name : 'No session set';
+    const termLabel = current.term ? TERM_LABELS[current.term.name] : 'No term set';
+    if (yearBtn && yearBtn.firstChild) yearBtn.firstChild.textContent = yearLabel + ' ';
+    if (termBtn && termBtn.firstChild) termBtn.firstChild.textContent = termLabel + ' ';
+    localStorage.setItem(SESSION_LABEL_KEY, yearLabel);
+    localStorage.setItem(TERM_LABEL_KEY, termLabel);
+  }
+
+  /** The topbar's session/term picker — for PROPRIETOR/PRINCIPAL this is
+   * also where "advance to next term" and "start a new session" live, the
+   * one place isCurrent ever flips (AcademicSessionsService.activateTerm).
+   * Every other role gets a read-only view of the same current session/term. */
+  async function openSessionTermModal() {
+    const user = getUser();
+    const canManage = user && SESSION_TERM_ROLES.has(user.role);
+    openModal('<p class="eyebrow">Academic calendar</p><h2>Session &amp; term</h2><div id="sessionTermModalBody"><p class="modal-sub">Loading…</p></div><div class="form-actions"><button class="outline-button" data-modal-close>Close</button></div>');
+    const body = document.getElementById('sessionTermModalBody');
+    let sessions, current;
+    try {
+      [sessions, current] = await Promise.all([api('/academic-sessions'), api('/academic-sessions/current')]);
+    } catch (err) { body.innerHTML = `<p class="modal-sub">Could not load academic sessions (${err.message})</p>`; return; }
+
+    const currentTermId = current.term ? current.term.id : null;
+    const currentSessionId = current.session ? current.session.id : null;
+
+    const nextTermInSameSession = () => {
+      if (!current.session || !current.term) return null;
+      const idx = TERM_ORDER.indexOf(current.term.name);
+      const nextName = TERM_ORDER[idx + 1];
+      if (!nextName) return null;
+      const session = sessions.find((s) => s.id === current.session.id);
+      return session ? (session.terms || []).find((t) => t.name === nextName) : null;
+    };
+    const next = nextTermInSameSession();
+
+    const summary = `<div class="modal-detail-row"><span>Current session</span><strong>${current.session ? current.session.name : 'None set'}</strong></div><div class="modal-detail-row"><span>Current term</span><strong>${current.term ? TERM_LABELS[current.term.name] : 'None set'}</strong></div>`;
+
+    const actionsHtml = canManage ? `<div class="form-actions" style="margin:10px 0">
+      ${next ? `<button class="new-button" id="advanceTermBtn" data-advance-term-id="${next.id}" data-advance-term-label="${TERM_LABELS[next.name]}">Advance to ${TERM_LABELS[next.name]} →</button>` : ''}
+      <button class="outline-button" id="startNewSessionBtn">+ Start new session</button>
+    </div>` : '';
+
+    const sessionsHtml = sessions.map((s) => {
+      const termsHtml = TERM_ORDER.map((name) => {
+        const t = (s.terms || []).find((tm) => tm.name === name);
+        if (!t) return `<span class="status">${TERM_LABELS[name]}: not created</span>`;
+        const isCurrent = t.id === currentTermId;
+        const setBtn = canManage && !isCurrent ? `<button type="button" class="outline-button" data-activate-term="${t.id}" data-activate-term-label="${TERM_LABELS[name]} of ${s.name}">Set current</button>` : '';
+        return `<span class="status ${isCurrent ? '' : 'pending'}">${TERM_LABELS[name]}${isCurrent ? ' · current' : ''}</span> ${setBtn}`;
+      }).join(' ');
+      return `<div class="modal-detail-row" style="align-items:flex-start"><span>${s.name}${s.id === currentSessionId ? ' (current)' : ''}</span><span style="text-align:right">${termsHtml}</span></div>`;
+    }).join('') || '<p class="modal-sub">No academic sessions created yet.</p>';
+
+    body.innerHTML = `${summary}${actionsHtml}<div class="detail-section"><p class="eyebrow">All sessions</p>${sessionsHtml}</div>`;
+
+    const advanceBtn = document.getElementById('advanceTermBtn');
+    if (advanceBtn) advanceBtn.addEventListener('click', () => {
+      if (!window.confirm(`Advance to ${advanceBtn.dataset.advanceTermLabel}? This becomes the school's current term immediately.`)) return;
+      activateTermAndRefresh(advanceBtn.dataset.advanceTermId);
+    });
+    const startBtn = document.getElementById('startNewSessionBtn');
+    if (startBtn) startBtn.addEventListener('click', openNewSessionModal);
+
+    body.addEventListener('click', (e) => {
+      const setBtn = e.target.closest('[data-activate-term]');
+      if (!setBtn) return;
+      if (!window.confirm(`Set ${setBtn.dataset.activateTermLabel} as the school's current term?`)) return;
+      activateTermAndRefresh(setBtn.dataset.activateTerm);
+    });
+  }
+
+  async function activateTermAndRefresh(termId) {
+    try {
+      await api(`/terms/${termId}/activate`, { method: 'PATCH' });
+      toast('Current term updated');
+      refreshSessionTermBadge();
+      closeModal();
+    } catch (err) { toast(`Could not update the current term (${err.message})`); }
+  }
+
+  /** New session + its three terms, created together and the first
+   * activated immediately — the only path that gets a brand-new session
+   * off the ground, since a session with no current term isn't reachable
+   * by "advance to next term" (that only steps within an existing one). */
+  function openNewSessionModal() {
+    formModal({
+      eyebrow: 'Academic calendar', title: 'Start new session',
+      sub: 'Creates the session and its three terms, then makes First Term current. You can adjust term dates later if needed.',
+      fields: [
+        { name: 'name', label: 'Session name', placeholder: 'e.g. 2026/2027' },
+        { name: 'sessionStart', label: 'Session start date', type: 'date' },
+        { name: 'sessionEnd', label: 'Session end date', type: 'date' },
+        { name: 'term1End', label: 'First term ends', type: 'date' },
+        { name: 'term2End', label: 'Second term ends', type: 'date' },
+      ],
+      submitLabel: 'Create & activate',
+      onSubmit: async (d) => {
+        const name = (d.name || '').trim();
+        if (!name || !d.sessionStart || !d.sessionEnd || !d.term1End || !d.term2End) { toast('All fields are required'); return; }
+        try {
+          const session = await api('/academic-sessions', { method: 'POST', body: JSON.stringify({ name, startDate: d.sessionStart, endDate: d.sessionEnd }) });
+          const term1 = await api('/terms', { method: 'POST', body: JSON.stringify({ academicSessionId: session.id, name: 'FIRST', startDate: d.sessionStart, endDate: d.term1End }) });
+          await api('/terms', { method: 'POST', body: JSON.stringify({ academicSessionId: session.id, name: 'SECOND', startDate: d.term1End, endDate: d.term2End }) });
+          await api('/terms', { method: 'POST', body: JSON.stringify({ academicSessionId: session.id, name: 'THIRD', startDate: d.term2End, endDate: d.sessionEnd }) });
+          await api(`/terms/${term1.id}/activate`, { method: 'PATCH' });
+          toast(`${name} created and activated`);
+          refreshSessionTermBadge();
+        } catch (err) { toast(`Could not create session (${err.message})`); }
+      },
+    });
+  }
+
+  // ---- global search (topbar) ----
+  // Client-filtered over the same tenant/role-scoped endpoints every page
+  // already uses — /students is scoped per role server-side (own children
+  // for PARENT, own class for TEACHER, everyone for admin roles), so this
+  // is real data throughout, never a mocked result set.
+  const STAFF_SEARCH_ROLES = new Set(['PROPRIETOR', 'PRINCIPAL', 'HR_ADMIN', 'BURSAR']);
+  function openGlobalSearch() {
+    openModal(`<p class="eyebrow">Search</p><h2>Find a student or staff member</h2><div class="form-field"><input type="text" id="globalSearchInput" placeholder="Type a name or admission number…" autocomplete="off"></div><div id="globalSearchResults"><p class="modal-sub">Start typing to search.</p></div><div class="form-actions"><button class="outline-button" data-modal-close>Close</button></div>`);
+    const input = document.getElementById('globalSearchInput');
+    const resultsEl = document.getElementById('globalSearchResults');
+    input.focus();
+    let debounceTimer;
+    input.addEventListener('input', () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => runGlobalSearch(input.value.trim(), resultsEl), 250);
+    });
+  }
+  async function runGlobalSearch(query, resultsEl) {
+    if (query.length < 2) { resultsEl.innerHTML = '<p class="modal-sub">Type at least 2 characters…</p>'; return; }
+    resultsEl.innerHTML = '<p class="modal-sub">Searching…</p>';
+    const q = query.toLowerCase();
+    const user = getUser();
+    const canSearchStaff = user && STAFF_SEARCH_ROLES.has(user.role);
+    try {
+      const [students, staff] = await Promise.all([
+        api('/students').catch(() => []),
+        canSearchStaff ? api('/staff-profiles').catch(() => []) : Promise.resolve([]),
+      ]);
+      const studentMatches = students.filter((s) => `${s.firstName} ${s.lastName}`.toLowerCase().includes(q) || (s.admissionNo || '').toLowerCase().includes(q));
+      const staffMatches = staff.filter((s) => `${s.user.firstName} ${s.user.lastName}`.toLowerCase().includes(q));
+      if (!studentMatches.length && !staffMatches.length) { resultsEl.innerHTML = '<p class="modal-sub">No matches.</p>'; return; }
+      resultsEl.innerHTML = `<div class="guardian-search-results">${[
+        ...studentMatches.slice(0, 8).map((s) => `<div class="guardian-search-result-row" data-search-goto="students.html">${s.firstName} ${s.lastName} · Student · ${s.admissionNo}</div>`),
+        ...staffMatches.slice(0, 8).map((s) => `<div class="guardian-search-result-row" data-search-goto="academics.html#teachers">${s.user.firstName} ${s.user.lastName} · Staff</div>`),
+      ].join('')}</div>`;
+    } catch (err) { resultsEl.innerHTML = `<p class="modal-sub">Could not search (${err.message})</p>`; }
   }
 
   // ---- nav rendering ----
@@ -208,36 +420,38 @@
     if (!last) return 'dashboard.html';
     return last.includes('.') ? last : last + '.html';
   }
+  // Admissions, Fees/billing, Schools/Campuses, and People & payroll have
+  // no real backend behind them yet (each is still a hardcoded mock array
+  // — see students.js's admissions kanban, settings.js's campus list,
+  // people.js's payroll run) — left out of the sidebar entirely for now
+  // rather than shown as a dead/blurred link.
+  const HIDDEN_SLUGS = new Set([
+    'admissions', 'apply-for-admission',
+    'fees', 'fees-and-payments', 'invoices', 'payments', 'arrears', 'reconciliation', 'expenses',
+    'schools-campuses',
+    'people-and-payroll', 'payroll', 'employees', 'leave', 'documents', 'performance',
+    'recruitment', 'payroll-audit-trail', 'statutory-rules', 'compliance-review',
+  ]);
+
   function renderNav(role) {
     const nav = document.getElementById('mainNav');
     if (!nav) return;
-    const items = navs[role] || navs.proprietor;
+    const items = (navs[role] || navs.proprietor).filter((item) => !HIDDEN_SLUGS.has(slug(item)));
     const here = currentFile();
     nav.innerHTML = `<p class="nav-label">${ROLE_TITLES[role]} workspace</p>` + items.map((item, i) => {
       const file = i === 0 ? 'dashboard.html' : fileForSlug(slug(item));
       const active = file.split('#')[0] === here;
-      return `<a class="nav-link ${active ? 'active' : ''}" href="${file}"><span>${icons[i % icons.length]}</span>${item}${item === 'Fees & payments' ? '<b>38</b>' : ''}</a>`;
+      const label = `<span>${iconFor(item, i)}</span><span class="nav-label-text">${item}</span>`;
+      return `<a class="nav-link ${active ? 'active' : ''}" href="${file}" title="${item}">${label}</a>`;
     }).join('');
     const mobileNav = document.getElementById('mobileBottomNav');
     if (mobileNav) {
       const mobile = role === 'parent' || role === 'student';
       mobileNav.innerHTML = mobile ? items.slice(0, 5).map((item, i) => {
         const file = i === 0 ? 'dashboard.html' : fileForSlug(slug(item));
-        return `<a class="${file.split('#')[0] === here ? 'active' : ''}" href="${file}"><span>${icons[i]}</span>${item}</a>`;
+        return `<a class="${file.split('#')[0] === here ? 'active' : ''}" href="${file}"><span>${iconFor(item, i)}</span>${item}</a>`;
       }).join('') : '';
     }
-  }
-
-  function populateRoleSelect(role) {
-    const select = document.getElementById('roleSelect');
-    if (!select) return;
-    select.innerHTML = Object.entries(ROLE_TITLES).map(([k, title]) => `<option value="${k}">${title}</option>`).join('');
-    select.value = role;
-    select.addEventListener('change', () => {
-      setActiveRole(select.value);
-      renderNav(select.value);
-      if (typeof window.SchoolOS.onRoleChange === 'function') window.SchoolOS.onRoleChange(select.value);
-    });
   }
 
   // ---- shell mount (module pages only) ----
@@ -270,26 +484,48 @@
     if (profileInitials) profileInitials.textContent = initialsOf(`${user.firstName} ${user.lastName}`);
 
     const yearBtn = document.getElementById('sessionYearBtn');
-    if (yearBtn && yearBtn.firstChild) yearBtn.firstChild.textContent = (localStorage.getItem(SESSION_LABEL_KEY) || '2025/2026') + ' ';
+    if (yearBtn && yearBtn.firstChild) yearBtn.firstChild.textContent = (localStorage.getItem(SESSION_LABEL_KEY) || '—') + ' ';
     const termBtn = document.getElementById('sessionTermBtn');
-    if (termBtn && termBtn.firstChild) termBtn.firstChild.textContent = (localStorage.getItem(TERM_LABEL_KEY) || 'Third term') + ' ';
+    if (termBtn && termBtn.firstChild) termBtn.firstChild.textContent = (localStorage.getItem(TERM_LABEL_KEY) || '—') + ' ';
+    if (yearBtn || termBtn) refreshSessionTermBadge();
+    if (yearBtn) yearBtn.addEventListener('click', openSessionTermModal);
+    if (termBtn) termBtn.addEventListener('click', openSessionTermModal);
+    refreshBrandColors();
 
-    populateRoleSelect(role);
     renderNav(role);
 
     const logoutBtn = document.getElementById('logoutButton');
     if (logoutBtn) logoutBtn.addEventListener('click', logout);
 
-    const newBtn = document.getElementById('newButton');
-    if (newBtn) newBtn.addEventListener('click', () => {
-      if (typeof window.SchoolOS.onCreateNew === 'function') window.SchoolOS.onCreateNew();
-      else toast('Open a workspace page to create a matching record');
-    });
+    // Collapsed state persists across reloads/pages so it doesn't reset
+    // every time the shell remounts (every navigation, since this is a
+    // multi-page app, not an SPA).
+    const appShell = document.querySelector('.app-shell');
+    const collapseBtn = document.getElementById('sidebarCollapseBtn');
+    if (appShell && collapseBtn) {
+      const applyCollapsed = (collapsed) => {
+        appShell.classList.toggle('sidebar-collapsed', collapsed);
+        const label = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+        collapseBtn.title = label;
+        collapseBtn.setAttribute('aria-label', label);
+        collapseBtn.textContent = collapsed ? '»' : '«';
+      };
+      applyCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1');
+      collapseBtn.addEventListener('click', () => {
+        const collapsed = !appShell.classList.contains('sidebar-collapsed');
+        applyCollapsed(collapsed);
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : '0');
+      });
+    }
+
+    const searchBtn = document.getElementById('topbarSearchBtn');
+    if (searchBtn) searchBtn.addEventListener('click', openGlobalSearch);
 
     document.addEventListener('click', (e) => {
       if (e.target.closest('[data-modal-close]') || e.target === document.getElementById('modalOverlay')) closeModal();
       const t = e.target.closest('[data-toast]'); if (t) toast(t.dataset.toast);
       const gp = e.target.closest('[data-goto-page]'); if (gp) location.href = fileForSlug(gp.dataset.gotoPage);
+      const sg = e.target.closest('[data-search-goto]'); if (sg) location.href = sg.dataset.searchGoto;
       const pc = e.target.closest('[data-pay-child]');
       if (pc) {
         if (typeof window.SchoolOS.onPayChild === 'function') window.SchoolOS.onPayChild(pc.dataset.payChild);
@@ -300,13 +536,22 @@
     });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
 
+    // A sidebar link to a different section of the SAME html file (e.g.
+    // academics.html#teachers while already on academics.html) only
+    // changes the URL hash — the browser doesn't reload the document, so
+    // it never fires. Each page's own script picks its active tab from
+    // location.hash exactly once, at load time, so without this the
+    // sidebar looks like it "does nothing" for same-file links. Reloading
+    // on hashchange makes every such link behave like a real navigation.
+    window.addEventListener('hashchange', () => location.reload());
+
     return role;
   }
 
   window.SchoolOS = {
     api, getUser, getAccessToken, logout, getActiveRole, setActiveRole,
     fileForSlug, slug, money, initialsOf, toast, openModal, closeModal, formModal, detailModal,
-    renderGenericPage,
+    renderGenericPage, refreshBrandColors,
     onRoleChange: null, onCreateNew: null, onPayChild: null, modalOpeners: {},
     ready: null,
   };
@@ -318,6 +563,7 @@
     const LOGIN_ROLE_TILES = {
       student: { emailPlaceholder: 'firstname.lastname@greenfield.test', hint: 'Student login — email and password issued when your record was created (password123 by default).' },
       teacher: { emailPlaceholder: 'firstname.lastname@greenfield.test', hint: 'Teacher login — email and password issued when your account was created (password123 by default).' },
+      parent: { emailPlaceholder: 'firstname.lastname@greenfield.test', hint: 'Parent login — email and password issued when your guardian record was created (password123 by default).' },
       staff: { emailPlaceholder: 'bursar@greenfield.test', hint: 'Bursar, HR, librarian, transport and other operations staff.' },
       admin: { emailPlaceholder: 'proprietor@greenfield.test', hint: 'Proprietor and Principal accounts — full school oversight.' },
     };

@@ -51,73 +51,59 @@
     });
   }
 
-  const parentChildren = [
-    { name: 'Ada Okon', guardian: 'Nneka Okon', cls: 'SS 1A · Ikoyi campus', attendance: '96%', feeBalance: '₦0', feeStatus: 'Paid', lastResult: '2nd position · Third term CA' },
-    { name: 'Emeka Okon', guardian: 'Nneka Okon', cls: 'JSS 2A · Ikoyi campus', attendance: '91%', feeBalance: '₦45,000', feeStatus: 'Pending', lastResult: '5th position · Third term CA' },
-  ];
-  const parentInvoices = {
-    'Ada Okon': [{ item: 'Tuition · Third term', amount: '₦210,000', due: '2 Sep', status: 'Paid' }, { item: 'Transport · Third term', amount: '₦32,000', due: '2 Sep', status: 'Paid' }],
-    'Emeka Okon': [{ item: 'Tuition balance · Third term', amount: '₦36,000', due: '2 Sep', status: 'Pending' }, { item: 'Exam levy · Third term', amount: '₦9,000', due: '15 Aug', status: 'Overdue' }],
-  };
-  const paymentHistory = [
-    { date: '12 Jun', child: 'Ada Okon', item: 'Second term tuition', amount: '₦210,000', method: 'Bank transfer', receipt: 'RCT-1092' },
-    { date: '10 Jun', child: 'Emeka Okon', item: 'Second term tuition', amount: '₦165,000', method: 'Card', receipt: 'RCT-1077' },
-    { date: '2 Feb', child: 'Ada Okon', item: 'First term tuition', amount: '₦210,000', method: 'Bank transfer', receipt: 'RCT-0891' },
-  ];
+  /** Fees/billing has no backend yet (CLAUDE.md Phase 2+ non-goal) — the
+   * parent's Fees tab is an honest "coming soon" state rather than
+   * fabricated invoices. My Children uses real data throughout: linked
+   * children, attendance and published results all come from the actual
+   * portal API. */
   function pageFeesParent(label) {
-    const outstandingTotal = parentChildren.reduce((sum, c) => sum + Number(c.feeBalance.replace(/[₦,]/g, '')), 0);
-    const pendingChildren = parentChildren.filter((c) => c.feeStatus === 'Pending').length;
-    const kpis = [['Total outstanding', window.SchoolOS.money(outstandingTotal), pendingChildren ? `${pendingChildren} ${pendingChildren === 1 ? 'child' : 'children'} with a balance` : 'All balances clear'], ['Next due date', '2 Sep', 'Third term instalment'], ['Paid this term', '₦447,000', 'Across both children'], ['Payment methods', 'Card · Transfer · USSD', 'Choose at checkout']];
-    const childBlocks = parentChildren.map((c) => {
-      const invoices = parentInvoices[c.name] || [];
-      const rows = invoices.map((i) => `<tr><td>${i.item}</td><td>${i.amount}</td><td>${i.due}</td><td><span class="status ${i.status !== 'Paid' ? 'pending' : ''}">${i.status}</span></td></tr>`).join('') || '<tr><td colspan="4">No invoices this term</td></tr>';
-      return `<section class="data-card fee-child-card"><div class="data-toolbar"><div class="person-cell"><span class="mini-avatar">${window.SchoolOS.initialsOf(c.name)}</span><div><strong>${c.name}</strong><small>${c.cls}</small></div></div>${c.feeStatus === 'Pending' ? `<button class="new-button" data-pay-child="${c.name}">Pay ${c.feeBalance}</button>` : '<span class="status">Fully paid</span>'}</div><table class="data-table"><thead><tr><th>Item</th><th>Amount</th><th>Due date</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></section>`;
-    }).join('');
-    const historyRows = paymentHistory.map((p) => `<tr><td>${p.date}</td><td>${p.child}</td><td>${p.item}</td><td>${p.amount}</td><td>${p.method}</td><td class="row-action"><button class="outline-button" data-view-receipt="${p.receipt}">View receipt</button></td></tr>`).join('');
-    return `<section class="page workspace-page visible" id="${window.SchoolOS.slug(label)}"><div class="page-heading"><div><p class="eyebrow">Fees &amp; payments</p><h1>${label}</h1><p class="subtitle">Pay your children's fees and keep every receipt in one place.</p></div></div><div class="screen-kpis">${kpis.map((s, i) => `<article class="screen-kpi"><p>${s[0]}</p><strong>${s[1]}</strong><small class="${i === 0 && pendingChildren ? 'warn' : ''}">${s[2]}</small></article>`).join('')}</div><div class="screen-tabs" data-tabs><button class="active" data-tab="outstanding">Outstanding</button><button data-tab="history">Payment history</button></div><div data-tab-panel="outstanding" class="tab-panel visible"><div class="fee-child-grid">${childBlocks}</div></div><div data-tab-panel="history" class="tab-panel"><section class="data-card"><table class="data-table"><thead><tr><th>Date</th><th>Child</th><th>Item</th><th>Amount</th><th>Method</th><th></th></tr></thead><tbody>${historyRows}</tbody></table></section></div></section>`;
-  }
-  function openPaymentModal(name) {
-    const c = parentChildren.find((x) => x.name === name); if (!c) return;
-    const paidAmount = c.feeBalance;
-    window.SchoolOS.formModal({
-      eyebrow: 'Fees', title: `Pay ${c.name}'s balance`, sub: 'Payment is simulated in this demo.',
-      fields: [{ name: 'amount', label: 'Amount (₦)', type: 'number', value: c.feeBalance.replace(/[₦,]/g, '') }, { name: 'method', label: 'Payment method', type: 'select', options: ['Card', 'Bank transfer', 'USSD'] }],
-      submitLabel: 'Pay now',
-      onSubmit: (d) => {
-        c.feeBalance = '₦0'; c.feeStatus = 'Paid';
-        (parentInvoices[c.name] || []).forEach((i) => { i.status = 'Paid'; });
-        paymentHistory.unshift({ date: 'Today', child: c.name, item: 'Third term balance', amount: paidAmount, method: d.method || 'Card', receipt: `RCT-${1100 + paymentHistory.length}` });
-        render(); window.SchoolOS.toast(`Payment received · ${c.name}`);
-      },
-    });
-  }
-  function openReceiptModal(receipt) {
-    const p = paymentHistory.find((x) => x.receipt === receipt); if (!p) return;
-    window.SchoolOS.detailModal({ eyebrow: 'Receipt', title: p.receipt, rows: [['Date', p.date], ['Child', p.child], ['Item', p.item], ['Amount', p.amount], ['Method', p.method]], footer: '<div class="form-actions"><button class="outline-button" data-modal-close>Close</button><button class="new-button" data-toast="Receipt downloaded">Download PDF</button></div>' });
+    return `<section class="page workspace-page visible" id="${window.SchoolOS.slug(label)}"><div class="page-heading"><div><p class="eyebrow">Fees &amp; payments</p><h1>${label}</h1><p class="subtitle">Not built yet — this isn't showing you fake balances.</p></div></div><section class="data-card"><div class="empty-state"><span class="mini-avatar">₦</span><h3>Coming soon</h3><p>Fee structures, invoices and online payment haven't been built on the backend yet. When they are, you'll see and pay your children's balances here.</p></div></section></section>`;
   }
 
-  const childTestResults = {
-    'Ada Okon': [{ test: 'CA1', subject: 'Mathematics', score: '18/20' }, { test: 'CA2', subject: 'Mathematics', score: '19/20' }, { test: 'Exam', subject: 'Mathematics', score: '52/60' }, { test: 'CA1', subject: 'English', score: '16/20' }, { test: 'Exam', subject: 'English', score: '48/60' }],
-    'Emeka Okon': [{ test: 'CA1', subject: 'Mathematics', score: '14/20' }, { test: 'Exam', subject: 'Mathematics', score: '40/60' }, { test: 'CA1', subject: 'English', score: '15/20' }],
-  };
-  function openChildResultsModal(name) {
-    const c = parentChildren.find((x) => x.name === name); if (!c) return;
-    const tests = childTestResults[name] || [];
-    const rows = [['Position', c.lastResult], ...tests.map((t) => [`${t.subject} · ${t.test}`, t.score])];
-    window.SchoolOS.detailModal({ eyebrow: 'Results', title: c.name, rows, footer: `<div class="form-actions"><button class="outline-button" data-modal-close>Close</button><button class="new-button" data-modal-close data-view-report-card="${c.name}">View report card →</button></div>` });
+  async function openChildResultsModal(studentId, name) {
+    let results = [];
+    try { results = await window.SchoolOS.api('/portal/parent/children/' + studentId + '/results'); } catch (err) { window.SchoolOS.toast(`Could not load results (${err.message})`); return; }
+    const rows = results.length
+      ? results.map((r) => [`${r.subject?.name || '—'} · ${r.term?.name || '—'}`, `${r.totalScore ?? '—'}${r.grade ? ' · ' + r.grade : ''}`])
+      : [['No published results yet', '—']];
+    window.SchoolOS.detailModal({ eyebrow: 'Results', title: name, sub: 'Only published results appear here.', rows });
   }
-  function openReportCardModal(name) {
-    const c = parentChildren.find((x) => x.name === name); if (!c) return;
-    window.SchoolOS.detailModal({ eyebrow: 'Third term report card', title: c.name, rows: [['Class', c.cls], ['Position', c.lastResult], ['Attendance', c.attendance], ['Mathematics', 'A'], ['English', 'B'], ['Basic Science', 'A'], ['Class teacher’s remark', 'A consistent, hardworking student.']], footer: '<div class="form-actions"><button class="outline-button" data-modal-close>Close</button><button class="new-button" data-toast="Report card downloaded">Download PDF</button></div>' });
-  }
-  function openChildAttendanceModal(name) {
-    const c = parentChildren.find((x) => x.name === name); if (!c) return;
-    window.SchoolOS.detailModal({ eyebrow: 'Attendance', title: c.name, rows: [['This term', c.attendance], ['Days present', '61 / 64'], ['Last absence', '12 Aug']] });
+  async function openChildAttendanceModal(studentId, name) {
+    let records = [];
+    try { records = await window.SchoolOS.api('/portal/parent/children/' + studentId + '/attendance'); } catch (err) { window.SchoolOS.toast(`Could not load attendance (${err.message})`); return; }
+    const rows = records.length
+      ? records.slice(0, 20).map((r) => [new Date(r.date).toDateString(), r.status])
+      : [['No attendance recorded yet', '—']];
+    window.SchoolOS.detailModal({ eyebrow: 'Attendance', title: name, sub: 'Most recent first.', rows });
   }
   function pageMyChildren(label) {
-    const kpis = [['Children enrolled', String(parentChildren.length), `Linked to ${parentChildren[0]?.guardian || 'you'}`], ['Fees outstanding', '₦45,000', '1 child has a pending balance'], ['Average attendance', '93.5%', 'Across both children'], ['Unread messages', '3', 'From class teachers']];
-    const cards = parentChildren.map((c) => `<article class="child-card"><div class="person-cell"><span class="mini-avatar">${window.SchoolOS.initialsOf(c.name)}</span><div><strong>${c.name}</strong><small>${c.cls}</small></div></div><div class="child-stats"><div><span>Attendance</span><strong>${c.attendance}</strong></div><div><span>Fee balance</span><strong>${c.feeBalance}</strong></div><div><span>Last result</span><strong>${c.feeStatus === 'Paid' ? 'On track' : 'Review'}</strong></div></div><p class="child-note">${c.lastResult}</p><div class="child-actions"><button class="outline-button" data-view-child-results="${c.name}">View results</button>${c.feeStatus === 'Pending' ? `<button class="new-button" data-pay-child="${c.name}">Pay ${c.feeBalance}</button>` : `<button class="outline-button" data-view-child-attendance="${c.name}">View attendance</button>`}</div></article>`).join('');
-    return `<section class="page workspace-page visible" id="my-children"><div class="page-heading"><div><p class="eyebrow">Your family</p><h1>${label}</h1><p class="subtitle">Fees, attendance and results for every child, in one place.</p></div></div><div class="screen-kpis">${kpis.map((s, i) => `<article class="screen-kpi"><p>${s[0]}</p><strong>${s[1]}</strong><small class="${i === 1 ? 'warn' : ''}">${s[2]}</small></article>`).join('')}</div><div class="child-grid">${cards}</div></section>`;
+    return `<section class="page workspace-page visible" id="my-children"><div class="page-heading"><div><p class="eyebrow">Your family</p><h1>${label}</h1><p class="subtitle">Real attendance and results for every linked child. Fees aren't built yet.</p></div></div><div id="myChildrenGrid" class="child-grid"><p class="modal-sub">Loading…</p></div></section>`;
+  }
+  async function loadMyChildren() {
+    const grid = document.getElementById('myChildrenGrid');
+    if (!grid || !window.SchoolOS.getAccessToken()) return;
+    grid.innerHTML = '<p class="modal-sub">Loading…</p>';
+    try {
+      const links = await window.SchoolOS.api('/portal/parent/children');
+      if (!links.length) { grid.innerHTML = '<div class="empty-state"><span class="mini-avatar">♥</span><h3>No children linked yet</h3><p>Ask the school to link your account to your child’s record.</p></div>'; return; }
+      const cards = await Promise.all(links.map(async (link) => {
+        const s = link.student;
+        const name = `${s.firstName} ${s.lastName}`;
+        const cls = s.currentClassArm ? `${s.currentClassArm.schoolClass.name} · ${s.currentClassArm.name}` : 'Unassigned';
+        let attendanceNote = 'No records yet';
+        try {
+          const attendance = await window.SchoolOS.api('/portal/parent/children/' + s.id + '/attendance');
+          if (attendance.length) attendanceNote = `${attendance.filter((a) => a.status === 'PRESENT').length}/${attendance.length} present`;
+        } catch (err) { attendanceNote = 'Could not load'; }
+        let resultsNote = 'No published results yet';
+        try {
+          const results = await window.SchoolOS.api('/portal/parent/children/' + s.id + '/results');
+          if (results.length) resultsNote = `${results.length} published`;
+        } catch (err) { resultsNote = 'Could not load'; }
+        return `<article class="child-card"><div class="person-cell"><span class="mini-avatar">${window.SchoolOS.initialsOf(name)}</span><div><strong>${name}</strong><small>${cls}</small></div></div><div class="child-stats"><div><span>Attendance</span><strong>${attendanceNote}</strong></div><div><span>Results</span><strong>${resultsNote}</strong></div><div><span>Fees</span><strong>Coming soon</strong></div></div><div class="child-actions"><button class="outline-button" data-view-child-results="${s.id}" data-child-name="${name}">View results</button><button class="outline-button" data-view-child-attendance="${s.id}" data-child-name="${name}">View attendance</button></div></article>`;
+      }));
+      grid.innerHTML = cards.join('');
+    } catch (err) { grid.innerHTML = `<p class="modal-sub">Could not load your children (${err.message})</p>`; }
   }
 
   const GENERIC_LABELS = { invoices: 'Invoices', payments: 'Payments', arrears: 'Arrears', reconciliation: 'Reconciliation', expenses: 'Expenses' };
@@ -143,6 +129,7 @@
     if (currentRole === 'parent') {
       if (hash === 'my-children') {
         container.innerHTML = `<div class="screen-tabs" style="margin:32px 52px 0"><button id="toFeesTab">Fees</button><button class="active">My Children</button></div>` + pageMyChildren('My Children');
+        loadMyChildren();
       } else {
         container.innerHTML = `<div class="screen-tabs" style="margin:32px 52px 0"><button class="active">Fees</button><button id="toChildrenTab">My Children</button></div>` + pageFeesParent('Fees');
       }
@@ -157,12 +144,9 @@
     const btn = document.getElementById('newFeeStructureBtn'); if (btn) btn.addEventListener('click', openNewFeeStructureModal);
   }
 
-  window.SchoolOS.onPayChild = openPaymentModal;
   document.addEventListener('click', (e) => {
-    const vr = e.target.closest('[data-view-receipt]'); if (vr) openReceiptModal(vr.dataset.viewReceipt);
-    const vcr = e.target.closest('[data-view-child-results]'); if (vcr) openChildResultsModal(vcr.dataset.viewChildResults);
-    const vrc = e.target.closest('[data-view-report-card]'); if (vrc) openReportCardModal(vrc.dataset.viewReportCard);
-    const vca = e.target.closest('[data-view-child-attendance]'); if (vca) openChildAttendanceModal(vca.dataset.viewChildAttendance);
+    const vcr = e.target.closest('[data-view-child-results]'); if (vcr) openChildResultsModal(vcr.dataset.viewChildResults, vcr.dataset.childName);
+    const vca = e.target.closest('[data-view-child-attendance]'); if (vca) openChildAttendanceModal(vca.dataset.viewChildAttendance, vca.dataset.childName);
   });
 
   window.SchoolOS.ready.then((role) => {

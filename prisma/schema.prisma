@@ -28,6 +28,12 @@ model Tenant {
   slug      String       @unique
   status    TenantStatus @default(ACTIVE)
   timezone  String       @default("Africa/Lagos")
+  /// Admin-customizable color scheme (Settings → Appearance) — applied
+  /// tenant-wide as CSS custom properties (--brand-primary/--brand-sidebar
+  /// in styles.css), never resolves for another tenant since it's read via
+  /// GET /tenants/me/branding, scoped to the caller's own tenantId.
+  primaryColor String     @default("#176a50")
+  sidebarColor String     @default("#123a31")
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
@@ -51,6 +57,10 @@ model Tenant {
   lessons           Lesson[]
   announcements     Announcement[]
   cbtExams          CbtExam[]
+  timetableSlots    TimetableSlot[]
+  gradeBands        GradeBand[]
+  streamChangeRequests StreamChangeRequest[]
+  timetableSettings TimetableSettings?
 
   @@map("tenants")
 }
@@ -143,6 +153,7 @@ model User {
   communicationsSent     CommunicationLog[] @relation("CommunicationSender")
   communicationsReceived CommunicationLog[] @relation("CommunicationRecipient")
   announcementsCreated   Announcement[]
+  streamChangeRequestsReviewed StreamChangeRequest[]
 
   @@index([tenantId])
   @@map("users")
@@ -262,15 +273,40 @@ enum TermName {
   THIRD
 }
 
+enum SchoolLevel {
+  NURSERY
+  PRIMARY
+  JUNIOR_SECONDARY
+  SENIOR_SECONDARY
+}
+
+/// Senior Secondary science/art streaming. Only meaningful once a student's
+/// current class is SENIOR_SECONDARY — StudentsService.setStream rejects
+/// setting it otherwise. Subject.streams uses the same enum to tag which
+/// stream(s) a subject belongs to.
+enum Stream {
+  SCIENCE
+  ART
+}
+
+/// promotesToClassId is the admin-defined "next class" in the promotion
+/// chain (e.g. JSS 1 -> JSS 2) — set once when levels are configured, not
+/// derived from name/order guessing. null means terminal: promoting a
+/// student out of this class marks them GRADUATED instead of moving them
+/// (see StudentsService's bulk promotion).
 model SchoolClass {
-  id        String   @id @default(uuid())
-  tenantId  String
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  campusId  String
-  campus    Campus   @relation(fields: [campusId], references: [id], onDelete: Cascade)
-  name      String // e.g. "JSS 2"
-  order     Int      @default(0) // for sorting class levels
-  createdAt DateTime @default(now())
+  id                String       @id @default(uuid())
+  tenantId          String
+  tenant            Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  campusId          String
+  campus            Campus       @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  name              String // e.g. "JSS 2"
+  level             SchoolLevel  @default(JUNIOR_SECONDARY)
+  order             Int          @default(0) // for sorting class levels
+  promotesToClassId String?
+  promotesToClass   SchoolClass? @relation("ClassPromotion", fields: [promotesToClassId], references: [id], onDelete: SetNull)
+  promotedFromClasses SchoolClass[] @relation("ClassPromotion")
+  createdAt         DateTime     @default(now())
 
   arms               ClassArm[]
   teacherAssignments TeacherSubjectAssignment[]
@@ -287,6 +323,12 @@ model ClassArm {
   name           String // e.g. "Gold"
   classTeacherId String?
   classTeacher   StaffProfile? @relation(fields: [classTeacherId], references: [id], onDelete: SetNull)
+  /// Which stream this arm is for, at Senior Secondary — admin-tagged
+  /// (e.g. "Gold" -> SCIENCE, "Diamond" -> ART). null means not
+  /// stream-specific (the normal case outside Senior Secondary). Random
+  /// arm assignment for a Senior Secondary student is only drawn from
+  /// arms tagged for their chosen stream — see StudentsService.applyStreamChange.
+  stream         Stream?
   createdAt      DateTime      @default(now())
 
   students            Student[]
@@ -295,24 +337,36 @@ model ClassArm {
   assignments         Assignment[]
   lessons             Lesson[]
   cbtExams            CbtExam[]
+  timetableSlots      TimetableSlot[]
 
   @@unique([schoolClassId, name])
   @@map("class_arms")
 }
 
+/// levels: which SchoolLevel(s) this subject is taught at (e.g. "Further
+/// Mathematics" is SENIOR_SECONDARY only; "Mathematics" spans several).
+/// Empty means "not yet configured" — SubjectsService.assignTeacher
+/// treats that as "any level" rather than blocking every assignment.
 model Subject {
-  id        String   @id @default(uuid())
+  id        String        @id @default(uuid())
   tenantId  String
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   name      String
   code      String?
-  createdAt DateTime @default(now())
+  levels    SchoolLevel[]
+  /// Which stream(s) this subject belongs to at Senior Secondary (e.g.
+  /// Physics -> [SCIENCE], Literature -> [ART]). Empty means "any
+  /// stream" — same "empty = unconfigured, not blocking" convention as
+  /// `levels` (see SubjectsService.listSubjects).
+  streams   Stream[]      @default([])
+  createdAt DateTime      @default(now())
 
   teacherAssignments TeacherSubjectAssignment[]
   results            Result[]
   assignments        Assignment[]
   lessons            Lesson[]
   cbtExams           CbtExam[]
+  timetableSlots     TimetableSlot[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -367,6 +421,7 @@ model StaffProfile {
   assignmentsCreated Assignment[]
   lessonsCreated     Lesson[]
   cbtExamsCreated    CbtExam[]
+  timetableSlots     TimetableSlot[]
 
   @@unique([tenantId, staffId])
   @@index([tenantId])
@@ -406,6 +461,11 @@ model Student {
   currentClassArmId String?
   currentClassArm   ClassArm? @relation(fields: [currentClassArmId], references: [id], onDelete: SetNull)
 
+  /// Science/Art stream — only settable while the student's current class
+  /// is SENIOR_SECONDARY (StudentsService.setStream). Settable by the
+  /// student themselves (student portal) or by PROPRIETOR/PRINCIPAL.
+  stream Stream?
+
   // Optional login for the Student portal (Phase 4); nullable because many
   // students in Phase 1 won't have portal access yet.
   userId String? @unique
@@ -419,6 +479,7 @@ model Student {
   results           Result[]
   classHistory      StudentClassHistory[]
   cbtAttempts       CbtAttempt[]
+  streamChangeRequests StreamChangeRequest[]
 
   @@unique([tenantId, admissionNo])
   @@index([tenantId])
@@ -443,6 +504,40 @@ model StudentClassHistory {
   @@index([studentId])
   @@index([academicSessionId])
   @@map("student_class_history")
+}
+
+enum StreamChangeRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// Self-service stream-switch requests. Only a student in their first
+/// Senior Secondary class may create one (ClassesService.isEntrySeniorSecondaryClass
+/// — StudentsService.requestStreamChange enforces it); an admin
+/// (PROPRIETOR/PRINCIPAL) reviews and approves/rejects. Approving moves
+/// Student.stream and, if the class has an arm tagged for the new
+/// stream, the student into it (StudentsService.applyStreamChange) — a
+/// request never changes anything on its own until reviewed, same
+/// "no silent rewrite" discipline as promotion.
+model StreamChangeRequest {
+  id               String                    @id @default(uuid())
+  tenantId         String
+  tenant           Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  studentId        String
+  student          Student                   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  requestedStream  Stream
+  status           StreamChangeRequestStatus @default(PENDING)
+  reason           String?
+  reviewedByUserId String?
+  reviewedBy       User?                     @relation(fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  reviewNote       String?
+  createdAt        DateTime                  @default(now())
+  reviewedAt       DateTime?
+
+  @@index([tenantId, status])
+  @@index([studentId])
+  @@map("stream_change_requests")
 }
 
 /// A parent/guardian account. May have a login (Parent portal, Phase 4-ish
@@ -505,35 +600,50 @@ enum AttendanceStatus {
   EXCUSED
 }
 
+/// A TEACHER's correction lands PENDING and has no effect on the
+/// "official" status until a PROPRIETOR/PRINCIPAL reviews it — a
+/// PROPRIETOR/PRINCIPAL correction is self-approved (they are the admin).
+/// PENDING/REJECTED rows never change what AttendanceService.list()
+/// resolves as current; only the latest APPROVED row (or the original, if
+/// none) does. null on the original (non-correction) row.
+enum AttendanceCorrectionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 /// Corrections must not overwrite history — write a new record with
 /// correctionOf pointing at the original, correctionReason populated, and
 /// an AuditLog entry. Application code enforces this; the schema just
 /// carries the fields.
 model AttendanceRecord {
-  id               String           @id @default(uuid())
+  id               String                      @id @default(uuid())
   tenantId         String
-  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant           Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   campusId         String
-  campus           Campus           @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  campus           Campus                      @relation(fields: [campusId], references: [id], onDelete: Cascade)
   studentId        String
-  student          Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  student          Student                     @relation(fields: [studentId], references: [id], onDelete: Cascade)
   classArmId       String
-  classArm         ClassArm         @relation(fields: [classArmId], references: [id], onDelete: Cascade)
+  classArm         ClassArm                    @relation(fields: [classArmId], references: [id], onDelete: Cascade)
   termId           String
-  term             Term             @relation(fields: [termId], references: [id], onDelete: Cascade)
-  date             DateTime         @db.Date
+  term             Term                        @relation(fields: [termId], references: [id], onDelete: Cascade)
+  date             DateTime                    @db.Date
   status           AttendanceStatus
   recordedById     String
-  recordedBy       User             @relation("AttendanceRecordedBy", fields: [recordedById], references: [id])
+  recordedBy       User                        @relation("AttendanceRecordedBy", fields: [recordedById], references: [id])
   correctionOf     String?
   correctionReason String?
+  correctionStatus AttendanceCorrectionStatus?
+  rejectionReason  String?
   staffProfileId   String? // set when this row is a staff attendance record (future use)
-  staffProfile     StaffProfile?    @relation(fields: [staffProfileId], references: [id], onDelete: SetNull)
-  createdAt        DateTime         @default(now())
+  staffProfile     StaffProfile?               @relation(fields: [staffProfileId], references: [id], onDelete: SetNull)
+  createdAt        DateTime                    @default(now())
 
   @@unique([studentId, date, correctionOf], map: "uniq_student_date_correction")
   @@index([tenantId, campusId, date])
   @@index([classArmId, date])
+  @@index([tenantId, correctionStatus])
   @@map("attendance_records")
 }
 
@@ -584,6 +694,27 @@ model Result {
   @@index([tenantId])
   @@index([termId, subjectId])
   @@map("results")
+}
+
+/// One band of a school's grading scale (e.g. "A" = 70-100). Proprietor-
+/// managed; Result.grade is computed against these bands once, at result
+/// creation time, and stored — a later scale edit never retroactively
+/// rewrites a grade already on the books (same "no silent rewrite of the
+/// past" principle as everything else ledger-like in this schema).
+model GradeBand {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  grade     String // e.g. "A"
+  minScore  Int // inclusive
+  maxScore  Int // inclusive
+  meaning   String? // e.g. "Excellent"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, grade])
+  @@index([tenantId])
+  @@map("grade_bands")
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -903,4 +1034,73 @@ model CbtAnswer {
   @@unique([attemptId, questionId])
   @@index([attemptId])
   @@map("cbt_answers")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Timetable — generated from TeacherSubjectAssignment, one weekly grid per
+// ClassArm. Regenerating replaces every slot for the tenant; a slot is
+// never hand-edited into a state the generator couldn't have produced,
+// since the two uniques below are exactly the conflict rules the generator
+// enforces (a class arm sees one subject per period, a teacher is in one
+// place per period) — the DB is a second line of defense, not just the
+// generator's own bookkeeping.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// One per tenant — the shape of the school day the generator builds
+/// periods against (TimetableService.getSettings lazily creates one with
+/// sensible defaults on first read, rather than requiring a seed step).
+/// Period duration is fixed at 30 minutes app-wide (TIMETABLE.PERIOD_DURATION_MINUTES,
+/// not stored here) — only the day's start/end and its break windows are
+/// admin-configurable.
+model TimetableSettings {
+  id            String   @id @default(uuid())
+  tenantId      String   @unique
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  dayStartTime  String   @default("08:00") // "HH:mm", 24h
+  dayEndTime    String   @default("14:00")
+  updatedAt     DateTime @updatedAt
+
+  breaks TimetableBreak[]
+
+  @@map("timetable_settings")
+}
+
+/// A named window (e.g. "Short break", "Lunch") the generator treats as
+/// non-schedulable — TimetableGenerator.buildPeriods jumps straight from
+/// a break's start to its end rather than placing a period across it. One
+/// hop from tenantId, reached through its parent TimetableSettings (same
+/// pattern as ClassArm/Term — see tenant-scoping.extension.ts).
+model TimetableBreak {
+  id                  String            @id @default(uuid())
+  timetableSettingsId String
+  timetableSettings   TimetableSettings @relation(fields: [timetableSettingsId], references: [id], onDelete: Cascade)
+  label               String
+  startTime           String // "HH:mm"
+  endTime             String
+  order               Int               @default(0)
+
+  @@index([timetableSettingsId])
+  @@map("timetable_breaks")
+}
+
+model TimetableSlot {
+  id             String       @id @default(uuid())
+  tenantId       String
+  tenant         Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  classArmId     String
+  classArm       ClassArm     @relation(fields: [classArmId], references: [id], onDelete: Cascade)
+  subjectId      String
+  subject        Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  staffProfileId String
+  staffProfile   StaffProfile @relation(fields: [staffProfileId], references: [id], onDelete: Cascade)
+  dayOfWeek      Int // 1=Monday .. 5=Friday
+  periodIndex    Int // 0-based index into the day's period list (8:00am-2:00pm, 8 periods)
+  startTime      String // "08:00", 24h HH:mm — denormalized for display, derived from periodIndex at generation time
+  endTime        String
+  createdAt      DateTime     @default(now())
+
+  @@unique([classArmId, dayOfWeek, periodIndex])
+  @@unique([staffProfileId, dayOfWeek, periodIndex])
+  @@index([tenantId])
+  @@map("timetable_slots")
 }

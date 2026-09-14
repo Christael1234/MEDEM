@@ -1,9 +1,11 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { AuditService } from '../audit/audit.service';
 import { sanitizeUser } from '../../common/utils/sanitize-user';
+import { RequestContextService } from '../../common/context/request-context';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
+import { UpdateTenantBrandingDto } from './dto/update-tenant-branding.dto';
 
 /**
  * Tenant provisioning is a platform-level (SUPER_ADMIN) operation with no
@@ -16,6 +18,7 @@ export class TenantsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly requestContext: RequestContextService,
   ) {}
 
   async provision(dto: CreateTenantDto) {
@@ -73,5 +76,48 @@ export class TenantsService {
 
   findOne(id: string) {
     return this.prisma.raw.tenant.findUniqueOrThrow({ where: { id } });
+  }
+
+  /** Tenant itself has no tenantId column — it IS the tenant — so it's
+   * never auto-scoped by the Prisma extension (see tenant-scoping.extension.ts's
+   * doc comment: prisma.db.tenant is a bare passthrough to prisma.raw).
+   * Every read/write here explicitly filters to the caller's own tenantId
+   * from RequestContextService instead, so a user can only ever see or
+   * change their own school's colors, never another tenant's. */
+  async getMyBranding() {
+    const tenantId = this.requestContext.getTenantId();
+    if (!tenantId) throw new ForbiddenException('No tenant context');
+    return this.prisma.raw.tenant.findUniqueOrThrow({
+      where: { id: tenantId },
+      select: { id: true, name: true, primaryColor: true, sidebarColor: true },
+    });
+  }
+
+  async updateMyBranding(dto: UpdateTenantBrandingDto) {
+    const tenantId = this.requestContext.getTenantId();
+    if (!tenantId) throw new ForbiddenException('No tenant context');
+
+    const before = await this.prisma.raw.tenant.findUniqueOrThrow({
+      where: { id: tenantId },
+      select: { primaryColor: true, sidebarColor: true },
+    });
+    const updated = await this.prisma.raw.tenant.update({
+      where: { id: tenantId },
+      data: {
+        primaryColor: dto.primaryColor ?? undefined,
+        sidebarColor: dto.sidebarColor ?? undefined,
+      },
+      select: { id: true, name: true, primaryColor: true, sidebarColor: true },
+    });
+
+    await this.audit.log({
+      action: 'TENANT_BRANDING_UPDATED',
+      entityType: 'Tenant',
+      entityId: tenantId,
+      before,
+      after: { primaryColor: updated.primaryColor, sidebarColor: updated.sidebarColor },
+    });
+
+    return updated;
   }
 }

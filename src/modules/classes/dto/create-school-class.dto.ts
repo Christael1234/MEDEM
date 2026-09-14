@@ -1,4 +1,5 @@
-import { IsInt, IsOptional, IsString } from 'class-validator';
+import { SchoolLevel } from '@prisma/client';
+import { IsEnum, IsInt, IsOptional, IsString } from 'class-validator';
 
 export class CreateSchoolClassDto {
   @IsString()
@@ -6,6 +7,9 @@ export class CreateSchoolClassDto {
 
   @IsString()
   name!: string;
+
+  @IsEnum(SchoolLevel)
+  level!: SchoolLevel;
 
   @IsOptional()
   @IsInt()

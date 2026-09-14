@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { AllowAnyAuthenticatedRole } from '../../common/rbac/decorators/allow-any-role.decorator';
 import { Roles } from '../../common/rbac/decorators/roles.decorator';
 import { CreateGuardianDto } from './dto/create-guardian.dto';
@@ -8,6 +8,12 @@ import { GuardiansService } from './guardians.service';
 @Controller()
 export class GuardiansController {
   constructor(private readonly guardiansService: GuardiansService) {}
+
+  @Roles('PROPRIETOR', 'PRINCIPAL')
+  @Get('guardians')
+  search(@Query('search') search?: string) {
+    return this.guardiansService.search(search);
+  }
 
   @Roles('PROPRIETOR', 'PRINCIPAL')
   @Post('guardians')

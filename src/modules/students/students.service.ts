@@ -1,6 +1,7 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { StudentStatus } from '@prisma/client';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { GuardianRelationship, Stream, StreamChangeRequestStatus, StudentStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { AcademicSessionsService } from '../academic-sessions/academic-sessions.service';
 import { AuditService } from '../audit/audit.service';
 import { ClassesService } from '../classes/classes.service';
 import { DEFAULT_PORTAL_PASSWORD, generateLoginEmail } from '../../common/auth/login-credentials';
@@ -8,6 +9,7 @@ import { NumberingService } from '../../common/numbering/numbering.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { RequestContextService } from '../../common/context/request-context';
 import { tenantScopedCreate } from '../../common/prisma/tenant-scoped-create';
+import { BulkPromoteDto } from './dto/bulk-promote.dto';
 import { CreateStudentDto } from './dto/create-student.dto';
 import { PromoteStudentDto } from './dto/promote-student.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
@@ -18,6 +20,7 @@ export class StudentsService {
     private readonly prisma: PrismaService,
     private readonly numbering: NumberingService,
     private readonly classes: ClassesService,
+    private readonly academicSessions: AcademicSessionsService,
     private readonly audit: AuditService,
     private readonly requestContext: RequestContextService,
   ) {}
@@ -26,6 +29,23 @@ export class StudentsService {
     await this.prisma.db.campus.findUniqueOrThrow({ where: { id: dto.campusId } });
     if (dto.currentClassArmId) {
       await this.classes.assertArmBelongsToTenant(dto.currentClassArmId);
+    }
+
+    // At least one parent/guardian is required — either link an existing
+    // one (found via GET /guardians?search=, e.g. a sibling's parent
+    // already on file) or provide a new one's name. A second guardian is
+    // optional either way. class-validator can't express "one of these
+    // two field groups" cleanly, so it's checked here.
+    if (!dto.guardianId && !(dto.guardianFirstName && dto.guardianLastName)) {
+      throw new BadRequestException('A parent/guardian is required — search for an existing one or provide a name');
+    }
+    if (dto.secondGuardianFirstName || dto.secondGuardianLastName || dto.secondGuardianId) {
+      if (!dto.secondGuardianRelationship) {
+        throw new BadRequestException('secondGuardianRelationship is required when adding a second guardian');
+      }
+      if (!dto.secondGuardianId && !(dto.secondGuardianFirstName && dto.secondGuardianLastName)) {
+        throw new BadRequestException('The second guardian needs a name, or search for an existing one');
+      }
     }
 
     const tenantId = this.requestContext.getTenantId();
@@ -41,7 +61,20 @@ export class StudentsService {
     );
     const passwordHash = await bcrypt.hash(DEFAULT_PORTAL_PASSWORD, 12);
 
-    const { student, user } = await this.prisma.db.$transaction(async (tx) => {
+    // Login emails are generated up front (not inside the transaction) —
+    // generateLoginEmail does its own collision check via prisma.raw,
+    // matching how the student's own email above is resolved before the
+    // transaction starts. Only a *newly created* guardian gets a login;
+    // reusing an existing guardianId never touches its account.
+    const hasSecondGuardian = !!(dto.secondGuardianId || (dto.secondGuardianFirstName && dto.secondGuardianLastName));
+    const guardian1Account = dto.guardianId
+      ? null
+      : { email: await generateLoginEmail(this.prisma, tenantId, dto.guardianFirstName!, dto.guardianLastName!, 'parent'), passwordHash: await bcrypt.hash(DEFAULT_PORTAL_PASSWORD, 12) };
+    const guardian2Account = hasSecondGuardian && !dto.secondGuardianId
+      ? { email: await generateLoginEmail(this.prisma, tenantId, dto.secondGuardianFirstName!, dto.secondGuardianLastName!, 'parent'), passwordHash: await bcrypt.hash(DEFAULT_PORTAL_PASSWORD, 12) }
+      : null;
+
+    const { student, user, guardianLinks, guardianAccounts } = await this.prisma.db.$transaction(async (tx) => {
       // User.tenantId is nullable at the schema level, so (unlike Student)
       // this doesn't need the tenantScopedCreate type-assertion trick — the
       // extension still injects tenantId at runtime.
@@ -70,19 +103,80 @@ export class StudentsService {
         }),
       });
 
-      return { student, user };
+      // Resolves an existing guardian by id (tenant ownership confirmed by
+      // the tenant-scoping extension, same as any other tx.guardian call)
+      // or creates a new one — never both, id takes precedence. A newly
+      // created guardian also gets a real portal login (account pre-built
+      // above), same as the student itself.
+      const resolveGuardian = async (opts: {
+        id?: string;
+        firstName?: string;
+        lastName?: string;
+        email?: string;
+        phone?: string;
+        account?: { email: string; passwordHash: string } | null;
+      }) => {
+        if (opts.id) return { guardian: await tx.guardian.findUniqueOrThrow({ where: { id: opts.id } }), loginCredentials: null as { email: string; password: string } | null };
+        let userId: string | undefined;
+        if (opts.account) {
+          const guardianUser = await tx.user.create({
+            data: { role: 'PARENT', email: opts.account.email, passwordHash: opts.account.passwordHash, firstName: opts.firstName!, lastName: opts.lastName! },
+          });
+          userId = guardianUser.id;
+        }
+        const guardian = await tx.guardian.create({
+          data: tenantScopedCreate({ userId, firstName: opts.firstName!, lastName: opts.lastName!, email: opts.email, phone: opts.phone }),
+        });
+        return { guardian, loginCredentials: opts.account ? { email: opts.account.email, password: DEFAULT_PORTAL_PASSWORD } : null };
+      };
+
+      const guardianLinks: { guardianId: string; relationship: GuardianRelationship; isNew: boolean }[] = [];
+      const guardianAccounts: { name: string; email: string; password: string }[] = [];
+
+      const { guardian: guardian1, loginCredentials: guardian1Login } = await resolveGuardian({
+        id: dto.guardianId,
+        firstName: dto.guardianFirstName,
+        lastName: dto.guardianLastName,
+        email: dto.guardianEmail,
+        phone: dto.guardianPhone,
+        account: guardian1Account,
+      });
+      await tx.studentGuardian.create({
+        data: { studentId: student.id, guardianId: guardian1.id, relationship: dto.guardianRelationship, isPrimary: true },
+      });
+      guardianLinks.push({ guardianId: guardian1.id, relationship: dto.guardianRelationship, isNew: !dto.guardianId });
+      if (guardian1Login) guardianAccounts.push({ name: `${guardian1.firstName} ${guardian1.lastName}`, ...guardian1Login });
+
+      if (hasSecondGuardian) {
+        const { guardian: guardian2, loginCredentials: guardian2Login } = await resolveGuardian({
+          id: dto.secondGuardianId,
+          firstName: dto.secondGuardianFirstName,
+          lastName: dto.secondGuardianLastName,
+          email: dto.secondGuardianEmail,
+          phone: dto.secondGuardianPhone,
+          account: guardian2Account,
+        });
+        await tx.studentGuardian.create({
+          data: { studentId: student.id, guardianId: guardian2.id, relationship: dto.secondGuardianRelationship!, isPrimary: false },
+        });
+        guardianLinks.push({ guardianId: guardian2.id, relationship: dto.secondGuardianRelationship!, isNew: !dto.secondGuardianId });
+        if (guardian2Login) guardianAccounts.push({ name: `${guardian2.firstName} ${guardian2.lastName}`, ...guardian2Login });
+      }
+
+      return { student, user, guardianLinks, guardianAccounts };
     });
 
     await this.audit.log({
       action: 'STUDENT_CREATED',
       entityType: 'Student',
       entityId: student.id,
-      after: { admissionNo: student.admissionNo, status: student.status, loginEmail: user.email },
+      after: { admissionNo: student.admissionNo, status: student.status, loginEmail: user.email, guardianLinks },
     });
 
     return {
       ...student,
       loginCredentials: { email: user.email, password: DEFAULT_PORTAL_PASSWORD },
+      guardianLoginCredentials: guardianAccounts,
     };
   }
 
@@ -151,7 +245,7 @@ export class StudentsService {
       include: {
         guardianLinks: { include: { guardian: true } },
         classHistory: true,
-        currentClassArm: { include: { schoolClass: { select: { name: true } } } },
+        currentClassArm: { include: { schoolClass: { select: { name: true, level: true } } } },
       },
     });
   }
@@ -222,6 +316,156 @@ export class StudentsService {
     return student;
   }
 
+  /** Science/Art stream is only meaningful once a student is actually in
+   * Senior Secondary — gated the same way promotion is gated on Third
+   * Term, rather than letting a Nursery student get tagged by mistake.
+   * Sets the stream flag and, if the student's class has an arm tagged
+   * for the new stream (ClassArm.stream), moves them into a random one of
+   * those arms — recorded as StudentClassHistory, same "no silent
+   * rewrite" discipline as promotion. Doesn't move them if the class has
+   * no arm tagged for that stream yet (admin hasn't configured one) —
+   * the stream flag still gets set either way. */
+  private async applyStreamChange(id: string, stream: Stream) {
+    const student = await this.prisma.db.student.findUniqueOrThrow({
+      where: { id },
+      include: { currentClassArm: { include: { schoolClass: { include: { arms: true } } } } },
+    });
+
+    if (!student.currentClassArm || student.currentClassArm.schoolClass.level !== 'SENIOR_SECONDARY') {
+      throw new BadRequestException('Stream can only be set for a student currently in a Senior Secondary class');
+    }
+
+    const before = { stream: student.stream, classArmId: student.currentClassArmId };
+    const eligibleArms = student.currentClassArm.schoolClass.arms.filter((a) => a.stream === stream);
+    const newArm = eligibleArms.length
+      ? eligibleArms[Math.floor(Math.random() * eligibleArms.length)]
+      : null;
+    const movingArm = !!(newArm && newArm.id !== before.classArmId);
+    const currentSession = movingArm ? await this.academicSessions.getCurrentSession() : null;
+
+    const updated = await this.prisma.db.$transaction(async (tx) => {
+      const s = await tx.student.update({
+        where: { id },
+        data: { stream, currentClassArmId: newArm ? newArm.id : undefined },
+      });
+      if (movingArm && newArm && currentSession) {
+        await tx.studentClassHistory.create({
+          data: { studentId: id, academicSessionId: currentSession.id, classArmId: newArm.id, reason: 'stream change' },
+        });
+      }
+      return s;
+    });
+
+    return { before, student: updated };
+  }
+
+  /** Admin-direct stream set — no review needed, PROPRIETOR/PRINCIPAL
+   * already have full authority over a student's record. Self-service
+   * changes go through requestStreamChange/reviewStreamChangeRequest
+   * instead (see those for why). */
+  async setStream(id: string, stream: Stream) {
+    const { before, student } = await this.applyStreamChange(id, stream);
+    await this.audit.log({
+      action: 'STUDENT_STREAM_SET',
+      entityType: 'Student',
+      entityId: id,
+      before,
+      after: { stream: student.stream, classArmId: student.currentClassArmId },
+    });
+    return student;
+  }
+
+  /** Self-service: only a student in their FIRST Senior Secondary class
+   * (ClassesService.isEntrySeniorSecondaryClass — "SS1") may request a
+   * switch, and only ever as a request — it takes an admin's approval to
+   * actually change anything, same as it takes an admin to approve a
+   * result before it's official. One pending request per student at a
+   * time. */
+  async requestStreamChange(studentId: string, requestedStream: Stream, reason?: string) {
+    const student = await this.prisma.db.student.findUniqueOrThrow({
+      where: { id: studentId },
+      include: { currentClassArm: { include: { schoolClass: { select: { id: true, level: true } } } } },
+    });
+    if (!student.currentClassArm || student.currentClassArm.schoolClass.level !== 'SENIOR_SECONDARY') {
+      throw new BadRequestException('Stream requests are only available to Senior Secondary students');
+    }
+    const isEntry = await this.classes.isEntrySeniorSecondaryClass(student.currentClassArm.schoolClass.id);
+    if (!isEntry) {
+      throw new ForbiddenException('Only SS1 students may request a stream change');
+    }
+    if (student.stream === requestedStream) {
+      throw new BadRequestException(`Already in the ${requestedStream} stream`);
+    }
+    const existing = await this.prisma.db.streamChangeRequest.findFirst({
+      where: { studentId, status: 'PENDING' },
+    });
+    if (existing) {
+      throw new ConflictException('A stream change request is already pending review');
+    }
+
+    const request = await this.prisma.db.streamChangeRequest.create({
+      data: tenantScopedCreate({ studentId, requestedStream, reason }),
+    });
+
+    await this.audit.log({
+      action: 'STREAM_CHANGE_REQUESTED',
+      entityType: 'StreamChangeRequest',
+      entityId: request.id,
+      after: { studentId, requestedStream, reason },
+    });
+
+    return request;
+  }
+
+  /** Admin queue (no studentId filter) or a student's own history (via
+   * StudentPortalController, which always passes their own id) — same
+   * query, scoped differently by the caller. */
+  listStreamChangeRequests(status?: StreamChangeRequestStatus, studentId?: string) {
+    return this.prisma.db.streamChangeRequest.findMany({
+      where: { status, studentId },
+      orderBy: { createdAt: 'desc' },
+      include: { student: { select: { firstName: true, lastName: true, admissionNo: true, stream: true } } },
+    });
+  }
+
+  async reviewStreamChangeRequest(id: string, approve: boolean, reviewNote?: string) {
+    const request = await this.prisma.db.streamChangeRequest.findUniqueOrThrow({ where: { id } });
+    if (request.status !== 'PENDING') {
+      throw new BadRequestException('This request has already been reviewed');
+    }
+    const userId = this.requestContext.getUserId();
+
+    if (!approve) {
+      const rejected = await this.prisma.db.streamChangeRequest.update({
+        where: { id },
+        data: { status: 'REJECTED', reviewedByUserId: userId ?? undefined, reviewNote, reviewedAt: new Date() },
+      });
+      await this.audit.log({
+        action: 'STREAM_CHANGE_REQUEST_REJECTED',
+        entityType: 'StreamChangeRequest',
+        entityId: id,
+        after: { reviewNote },
+      });
+      return rejected;
+    }
+
+    const { before, student } = await this.applyStreamChange(request.studentId, request.requestedStream);
+    await this.prisma.db.streamChangeRequest.update({
+      where: { id },
+      data: { status: 'APPROVED', reviewedByUserId: userId ?? undefined, reviewNote, reviewedAt: new Date() },
+    });
+
+    await this.audit.log({
+      action: 'STREAM_CHANGE_REQUEST_APPROVED',
+      entityType: 'StreamChangeRequest',
+      entityId: id,
+      before,
+      after: { stream: student.stream, classArmId: student.currentClassArmId },
+    });
+
+    return this.prisma.db.streamChangeRequest.findUniqueOrThrow({ where: { id } });
+  }
+
   async updateStatus(id: string, status: StudentStatus) {
     const before = await this.prisma.db.student.findUniqueOrThrow({ where: { id } });
     const student = await this.prisma.db.student.update({ where: { id }, data: { status } });
@@ -272,5 +516,115 @@ export class StudentsService {
     });
 
     return student;
+  }
+
+  /** End-of-session bulk promotion review — only runnable in Third Term
+   * (assertCurrentTermIsThird). Returns every ACTIVE student currently in
+   * the arm plus a proposed target (the same-named arm in
+   * SchoolClass.promotesToClass, if the admin set one up and a
+   * same-named arm exists there) so the admin reviews/adjusts before
+   * confirming rather than a blind one-click promote. A class with no
+   * promotesToClass is terminal — its students graduate instead. */
+  async previewPromotion(classArmId: string, targetAcademicSessionId: string) {
+    await this.academicSessions.assertCurrentTermIsThird();
+    await this.classes.assertArmBelongsToTenant(classArmId);
+    await this.prisma.db.academicSession.findUniqueOrThrow({ where: { id: targetAcademicSessionId } });
+
+    const arm = await this.prisma.db.classArm.findUniqueOrThrow({
+      where: { id: classArmId },
+      include: { schoolClass: { include: { promotesToClass: { include: { arms: true } } } } },
+    });
+
+    const students = await this.prisma.db.student.findMany({
+      where: { currentClassArmId: classArmId, status: 'ACTIVE' },
+      select: { id: true, firstName: true, lastName: true, admissionNo: true },
+      orderBy: { lastName: 'asc' },
+    });
+
+    const targetClass = arm.schoolClass.promotesToClass;
+    const targetArms = targetClass ? targetClass.arms.map((a) => ({ id: a.id, name: a.name })) : [];
+    const defaultTargetArmId = targetClass ? (targetClass.arms.find((a) => a.name === arm.name)?.id ?? null) : null;
+
+    return {
+      sourceClassArm: { id: arm.id, name: arm.name, schoolClassName: arm.schoolClass.name },
+      targetClass: targetClass ? { id: targetClass.id, name: targetClass.name } : null,
+      targetArms,
+      isGraduating: !targetClass,
+      students: students.map((s) => ({ ...s, defaultTargetClassArmId: defaultTargetArmId })),
+    };
+  }
+
+  /** Applies a reviewed promotion list. Each assignment with a
+   * targetClassArmId moves that student (StudentClassHistory + a
+   * currentClassArmId update, same write shape as promote()); one
+   * without graduates the student instead (status -> GRADUATED — there's
+   * no class to record history against). Looped and individually
+   * audited/error-checked rather than one giant transaction, same
+   * "bulk = many audited single writes" shape as the CBT/results
+   * bulk-approve action. */
+  async bulkPromote(dto: BulkPromoteDto) {
+    await this.academicSessions.assertCurrentTermIsThird();
+    await this.classes.assertArmBelongsToTenant(dto.classArmId);
+    await this.prisma.db.academicSession.findUniqueOrThrow({ where: { id: dto.targetAcademicSessionId } });
+
+    const targetArmIds = [...new Set(dto.assignments.map((a) => a.targetClassArmId).filter((x): x is string => !!x))];
+    for (const armId of targetArmIds) {
+      await this.classes.assertArmBelongsToTenant(armId);
+    }
+
+    const studentIds = dto.assignments.map((a) => a.studentId);
+    const students = await this.prisma.db.student.findMany({
+      where: { id: { in: studentIds }, currentClassArmId: dto.classArmId },
+      select: { id: true, currentClassArmId: true },
+    });
+    if (students.length !== studentIds.length) {
+      throw new BadRequestException('One or more students are not currently in this class arm');
+    }
+    const byId = new Map(students.map((s) => [s.id, s]));
+
+    let promoted = 0;
+    let graduated = 0;
+    for (const assignment of dto.assignments) {
+      const before = byId.get(assignment.studentId)!;
+      if (assignment.targetClassArmId) {
+        await this.prisma.db.$transaction([
+          this.prisma.db.student.update({
+            where: { id: assignment.studentId },
+            data: { currentClassArmId: assignment.targetClassArmId },
+          }),
+          this.prisma.db.studentClassHistory.create({
+            data: {
+              studentId: assignment.studentId,
+              academicSessionId: dto.targetAcademicSessionId,
+              classArmId: assignment.targetClassArmId,
+              reason: 'promotion',
+            },
+          }),
+        ]);
+        await this.audit.log({
+          action: 'STUDENT_PROMOTED',
+          entityType: 'Student',
+          entityId: assignment.studentId,
+          before: { classArmId: before.currentClassArmId },
+          after: { classArmId: assignment.targetClassArmId, reason: 'promotion' },
+        });
+        promoted += 1;
+      } else {
+        await this.prisma.db.student.update({
+          where: { id: assignment.studentId },
+          data: { status: 'GRADUATED' },
+        });
+        await this.audit.log({
+          action: 'STUDENT_GRADUATED',
+          entityType: 'Student',
+          entityId: assignment.studentId,
+          before: { classArmId: before.currentClassArmId, status: 'ACTIVE' },
+          after: { status: 'GRADUATED' },
+        });
+        graduated += 1;
+      }
+    }
+
+    return { promoted, graduated };
   }
 }

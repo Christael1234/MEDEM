@@ -5,6 +5,7 @@ import * as bcrypt from 'bcrypt';
 import request from 'supertest';
 import { AppModule } from '../../src/app.module';
 import { RequestContextService } from '../../src/common/context/request-context';
+import { PrismaExceptionFilter } from '../../src/common/filters/prisma-exception.filter';
 import { NotificationService } from '../../src/modules/notifications/notification.service';
 
 /**
@@ -37,8 +38,8 @@ describe('Phase 4 — Portals & Communication (e2e)', () => {
   let studentAId: string;
   let studentBId: string;
 
-  async function login(email: string): Promise<string> {
-    const res = await request(app.getHttpServer()).post('/auth/login').send({ email, password: PASSWORD });
+  async function login(email: string, password: string = PASSWORD): Promise<string> {
+    const res = await request(app.getHttpServer()).post('/auth/login').send({ email, password });
     if (res.status >= 400) throw new Error(`login failed for ${email}: ${res.status} ${JSON.stringify(res.body)}`);
     return res.body.accessToken;
   }
@@ -47,6 +48,7 @@ describe('Phase 4 — Portals & Communication (e2e)', () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    app.useGlobalFilters(new PrismaExceptionFilter());
     await app.init();
 
     const superAdminEmail = `p4-superadmin-${suffix}@schoolos.dev`;
@@ -83,7 +85,7 @@ describe('Phase 4 — Portals & Communication (e2e)', () => {
     const classRes = await request(app.getHttpServer())
       .post('/classes')
       .set('Authorization', `Bearer ${proprietorToken}`)
-      .send({ campusId, name: `P4 Class ${suffix}` })
+      .send({ campusId, name: `P4 Class ${suffix}`, level: 'JUNIOR_SECONDARY' })
       .expect(201);
 
     const armARes = await request(app.getHttpServer())
@@ -133,39 +135,26 @@ describe('Phase 4 — Portals & Communication (e2e)', () => {
     await prisma.classArm.update({ where: { id: classArmA }, data: { classTeacherId: staffAProfile.id } });
     await prisma.classArm.update({ where: { id: classArmB }, data: { classTeacherId: staffBProfile.id } });
 
+    // Student creation now requires a parent/guardian and auto-provisions
+    // that guardian's own portal login (same as the student's) when it's a
+    // newly created guardian rather than a reused guardianId — so this one
+    // call is enough to get both a real student and a real, log-in-able
+    // parent account, no separate POST /users + POST /guardians dance.
     const studentARes = await request(app.getHttpServer())
       .post('/students')
       .set('Authorization', `Bearer ${proprietorToken}`)
-      .send({ campusId, firstName: 'Student', lastName: 'A', currentClassArmId: classArmA })
+      .send({ campusId, firstName: 'Student', lastName: 'A', currentClassArmId: classArmA, guardianFirstName: 'Parent', guardianLastName: 'A', guardianRelationship: 'FATHER' })
       .expect(201);
     studentAId = studentARes.body.id;
+    const parentACredentials = studentARes.body.guardianLoginCredentials[0];
+    parentAToken = await login(parentACredentials.email, parentACredentials.password);
 
     const studentBRes = await request(app.getHttpServer())
       .post('/students')
       .set('Authorization', `Bearer ${proprietorToken}`)
-      .send({ campusId, firstName: 'Student', lastName: 'B', currentClassArmId: classArmB })
+      .send({ campusId, firstName: 'Student', lastName: 'B', currentClassArmId: classArmB, guardianFirstName: 'Parent', guardianLastName: 'B', guardianRelationship: 'MOTHER' })
       .expect(201);
     studentBId = studentBRes.body.id;
-
-    const parentAEmail = `p4-parent-a-${suffix}@test.dev`;
-    const parentARes = await request(app.getHttpServer())
-      .post('/users')
-      .set('Authorization', `Bearer ${proprietorToken}`)
-      .send({ email: parentAEmail, password: PASSWORD, firstName: 'Parent', lastName: 'A', role: 'PARENT' })
-      .expect(201);
-    parentAToken = await login(parentAEmail);
-
-    const guardianRes = await request(app.getHttpServer())
-      .post('/guardians')
-      .set('Authorization', `Bearer ${proprietorToken}`)
-      .send({ firstName: 'Parent', lastName: 'A' })
-      .expect(201);
-    await prisma.guardian.update({ where: { id: guardianRes.body.id }, data: { userId: parentARes.body.id } });
-    await request(app.getHttpServer())
-      .post('/guardians/link')
-      .set('Authorization', `Bearer ${proprietorToken}`)
-      .send({ studentId: studentAId, guardianId: guardianRes.body.id, relationship: 'MOTHER', isPrimary: true })
-      .expect(201);
   }, 45000);
 
   afterAll(async () => {

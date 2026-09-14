@@ -6,6 +6,7 @@ import { AttendanceService } from '../../attendance/attendance.service';
 import { GuardiansService } from '../../guardians/guardians.service';
 import { ResultsService } from '../../results/results.service';
 import { StudentsService } from '../../students/students.service';
+import { TimetableService } from '../../timetable/timetable.service';
 
 /**
  * Multi-child aware: GuardiansService.myChildren() resolves every linked
@@ -22,6 +23,7 @@ export class ParentPortalController {
     private readonly results: ResultsService,
     private readonly attendance: AttendanceService,
     private readonly assignments: AssignmentsService,
+    private readonly timetable: TimetableService,
   ) {}
 
   @Roles('PARENT')
@@ -42,6 +44,13 @@ export class ParentPortalController {
   @Get('children/:studentId/attendance')
   childAttendance(@Param('studentId') studentId: string) {
     return this.attendance.list({ studentId });
+  }
+
+  @Roles('PARENT')
+  @Get('children/:studentId/timetable')
+  async childTimetable(@Param('studentId') studentId: string) {
+    await this.assertOwnChild(studentId);
+    return this.timetable.getForStudent(studentId);
   }
 
   @Roles('PARENT')

@@ -1,5 +1,5 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { AttendanceStatus } from '@prisma/client';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { AttendanceRecord, AttendanceStatus } from '@prisma/client';
 import { AcademicSessionsService } from '../academic-sessions/academic-sessions.service';
 import { AuditService } from '../audit/audit.service';
 import { ClassesService } from '../classes/classes.service';
@@ -25,8 +25,9 @@ export class AttendanceService {
 
   async record(dto: CreateAttendanceDto) {
     await this.classes.assertArmBelongsToTenant(dto.classArmId);
-    await this.classes.assertTeacherCanActOnArm(dto.classArmId);
+    await this.classes.assertTeacherIsClassTeacherOfArm(dto.classArmId);
     await this.academicSessions.assertTermBelongsToTenant(dto.termId);
+    await this.assertNotAlreadyTaken(dto.studentId, dto.date);
 
     const student = await this.prisma.db.student.findUniqueOrThrow({
       where: { id: dto.studentId },
@@ -53,7 +54,7 @@ export class AttendanceService {
    * teacher workflow rather than one record at a time. */
   async recordBulk(dto: BulkAttendanceDto) {
     await this.classes.assertArmBelongsToTenant(dto.classArmId);
-    await this.classes.assertTeacherCanActOnArm(dto.classArmId);
+    await this.classes.assertTeacherIsClassTeacherOfArm(dto.classArmId);
     await this.academicSessions.assertTermBelongsToTenant(dto.termId);
 
     const students = await this.prisma.db.student.findMany({
@@ -63,6 +64,16 @@ export class AttendanceService {
     const campusById = new Map(students.map((s) => [s.id, s.campusId]));
     if (campusById.size !== dto.entries.length) {
       throw new ForbiddenException('One or more studentIds are invalid for this tenant');
+    }
+
+    const existing = await this.prisma.db.attendanceRecord.findFirst({
+      where: { classArmId: dto.classArmId, date: new Date(dto.date), correctionOf: null },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new ConflictException(
+        'Attendance for this class has already been taken today — correct individual records instead of re-taking the register.',
+      );
     }
 
     const recordedById = this.requireUserId();
@@ -90,11 +101,19 @@ export class AttendanceService {
     return records;
   }
 
+  /** TEACHER corrections land PENDING and have no effect until a
+   * PROPRIETOR/PRINCIPAL reviews them (see approveCorrection/
+   * rejectCorrection) — a PROPRIETOR/PRINCIPAL correcting is the review,
+   * so theirs apply immediately. Either way this never overwrites the
+   * original row; list() resolves which row is "current". */
   async correct(originalId: string, status: AttendanceStatus, correctionReason: string) {
     const original = await this.prisma.db.attendanceRecord.findUniqueOrThrow({
       where: { id: originalId },
     });
-    await this.classes.assertTeacherCanActOnArm(original.classArmId);
+    await this.classes.assertTeacherIsClassTeacherOfArm(original.classArmId);
+
+    const role = this.requestContext.getRole();
+    const isAdmin = role === 'PROPRIETOR' || role === 'PRINCIPAL';
 
     const corrected = await this.prisma.db.attendanceRecord.create({
       data: tenantScopedCreate({
@@ -107,18 +126,73 @@ export class AttendanceService {
         recordedById: this.requireUserId(),
         correctionOf: original.id,
         correctionReason,
+        correctionStatus: isAdmin ? 'APPROVED' : 'PENDING',
       }),
     });
 
     await this.audit.log({
-      action: 'ATTENDANCE_CORRECTED',
+      action: isAdmin ? 'ATTENDANCE_CORRECTED' : 'ATTENDANCE_CORRECTION_REQUESTED',
       entityType: 'AttendanceRecord',
       entityId: corrected.id,
       before: { status: original.status },
-      after: { status: corrected.status, reason: correctionReason },
+      after: { status: corrected.status, reason: correctionReason, correctionStatus: corrected.correctionStatus },
     });
 
     return corrected;
+  }
+
+  async approveCorrection(id: string) {
+    const correction = await this.prisma.db.attendanceRecord.findUniqueOrThrow({ where: { id } });
+    if (correction.correctionStatus !== 'PENDING') {
+      throw new ConflictException(`This correction has already been ${(correction.correctionStatus || 'reviewed').toLowerCase()}`);
+    }
+
+    const updated = await this.prisma.db.attendanceRecord.update({
+      where: { id },
+      data: { correctionStatus: 'APPROVED' },
+    });
+    await this.audit.log({
+      action: 'ATTENDANCE_CORRECTION_APPROVED',
+      entityType: 'AttendanceRecord',
+      entityId: id,
+      before: { correctionStatus: 'PENDING' },
+      after: { correctionStatus: 'APPROVED' },
+    });
+    return updated;
+  }
+
+  async rejectCorrection(id: string, reason: string) {
+    const correction = await this.prisma.db.attendanceRecord.findUniqueOrThrow({ where: { id } });
+    if (correction.correctionStatus !== 'PENDING') {
+      throw new ConflictException(`This correction has already been ${(correction.correctionStatus || 'reviewed').toLowerCase()}`);
+    }
+
+    const updated = await this.prisma.db.attendanceRecord.update({
+      where: { id },
+      data: { correctionStatus: 'REJECTED', rejectionReason: reason },
+    });
+    await this.audit.log({
+      action: 'ATTENDANCE_CORRECTION_REJECTED',
+      entityType: 'AttendanceRecord',
+      entityId: id,
+      before: { correctionStatus: 'PENDING' },
+      after: { correctionStatus: 'REJECTED', reason },
+    });
+    return updated;
+  }
+
+  /** The school-wide queue a PROPRIETOR/PRINCIPAL reviews — every
+   * TEACHER-submitted correction still awaiting a decision. */
+  async listPendingCorrections() {
+    return this.prisma.db.attendanceRecord.findMany({
+      where: { correctionStatus: 'PENDING' },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        student: { select: { firstName: true, lastName: true } },
+        classArm: { select: { name: true, schoolClass: { select: { name: true } } } },
+        recordedBy: { select: { firstName: true, lastName: true } },
+      },
+    });
   }
 
   async list(filter: { classArmId?: string; studentId?: string; termId?: string; date?: string }) {
@@ -132,7 +206,7 @@ export class AttendanceService {
       }
     }
 
-    return this.prisma.db.attendanceRecord.findMany({
+    const records = await this.prisma.db.attendanceRecord.findMany({
       where: {
         classArmId: filter.classArmId,
         studentId: filter.studentId ?? (scopedStudentIds ? { in: scopedStudentIds } : undefined),
@@ -141,6 +215,47 @@ export class AttendanceService {
       },
       orderBy: { date: 'desc' },
     });
+    return this.resolveEffective(records);
+  }
+
+  /** Collapses a (studentId, date) group of rows — the original plus any
+   * correction attempts — down to the single row that's actually "true"
+   * right now: the most recently APPROVED correction if one exists,
+   * otherwise the original. PENDING/REJECTED corrections never change
+   * what's current; a PENDING one is only surfaced as a flag so viewers
+   * know a review is outstanding. */
+  private resolveEffective(records: AttendanceRecord[]): (AttendanceRecord & { hasPendingCorrection: boolean })[] {
+    const groups = new Map<string, AttendanceRecord[]>();
+    for (const r of records) {
+      const key = `${r.studentId}|${r.date.toISOString()}`;
+      const group = groups.get(key);
+      if (group) group.push(r);
+      else groups.set(key, [r]);
+    }
+
+    const effective: (AttendanceRecord & { hasPendingCorrection: boolean })[] = [];
+    for (const group of groups.values()) {
+      const root = group.find((r) => !r.correctionOf) ?? group[0];
+      const approved = group
+        .filter((r) => r.correctionStatus === 'APPROVED')
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      const winner = approved[0] ?? root;
+      const hasPendingCorrection = group.some((r) => r.correctionStatus === 'PENDING');
+      effective.push({ ...winner, hasPendingCorrection });
+    }
+    return effective.sort((a, b) => b.date.getTime() - a.date.getTime());
+  }
+
+  private async assertNotAlreadyTaken(studentId: string, isoDate: string): Promise<void> {
+    const existing = await this.prisma.db.attendanceRecord.findFirst({
+      where: { studentId, date: new Date(isoDate), correctionOf: null },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new ConflictException(
+        'Attendance for this student has already been taken today — correct the existing record instead.',
+      );
+    }
   }
 
   private requireUserId(): string {

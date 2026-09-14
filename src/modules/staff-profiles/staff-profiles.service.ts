@@ -1,6 +1,7 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { AuditService } from '../audit/audit.service';
+import { ClassesService } from '../classes/classes.service';
 import { DEFAULT_PORTAL_PASSWORD, generateLoginEmail } from '../../common/auth/login-credentials';
 import { NumberingService } from '../../common/numbering/numbering.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -15,6 +16,7 @@ import { UpdateTeacherDto } from './dto/update-teacher.dto';
 export class StaffProfilesService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly classes: ClassesService,
     private readonly numbering: NumberingService,
     private readonly audit: AuditService,
     private readonly requestContext: RequestContextService,
@@ -45,6 +47,25 @@ export class StaffProfilesService {
    * spot instead of a separate account-provisioning step. */
   async createTeacher(dto: CreateTeacherDto) {
     await this.prisma.db.campus.findUniqueOrThrow({ where: { id: dto.campusId } });
+
+    // ClassArm isn't auto-tenant-scoped (see tenant-scoping.extension.ts),
+    // so tenant ownership has to be checked explicitly before trusting it
+    // — a cross-tenant classArmId must never be assignable here (rule #1).
+    // The campus match is a domain rule, not a security one: a class
+    // teacher should actually be based at the campus their class is on.
+    if (dto.classArmId) {
+      await this.classes.assertArmBelongsToTenant(dto.classArmId);
+      const arm = await this.prisma.db.classArm.findUniqueOrThrow({
+        where: { id: dto.classArmId },
+        select: { classTeacherId: true, schoolClass: { select: { campusId: true } } },
+      });
+      if (arm.classTeacherId) {
+        throw new ConflictException('This class already has a class teacher assigned');
+      }
+      if (arm.schoolClass.campusId !== dto.campusId) {
+        throw new BadRequestException('A class teacher must be assigned to a class at their own campus');
+      }
+    }
 
     const tenantId = this.requestContext.getTenantId();
     if (!tenantId) throw new ForbiddenException();
@@ -82,6 +103,20 @@ export class StaffProfilesService {
         }),
       });
 
+      // Conditional update (classTeacherId: null in the where clause) makes
+      // this atomic against a concurrent request assigning the same arm —
+      // the earlier read-then-check above is just a fast-fail, not the
+      // actual guarantee. count === 0 means someone else won the race.
+      if (dto.classArmId) {
+        const result = await tx.classArm.updateMany({
+          where: { id: dto.classArmId, classTeacherId: null },
+          data: { classTeacherId: staffProfile.id },
+        });
+        if (result.count === 0) {
+          throw new ConflictException('This class already has a class teacher assigned');
+        }
+      }
+
       return { staffProfile, user };
     });
 
@@ -89,11 +124,12 @@ export class StaffProfilesService {
       action: 'TEACHER_CREATED',
       entityType: 'StaffProfile',
       entityId: staffProfile.id,
-      after: { staffId: staffProfile.staffId, loginEmail: user.email },
+      after: { staffId: staffProfile.staffId, loginEmail: user.email, classArmId: dto.classArmId ?? null },
     });
 
     return {
       ...staffProfile,
+      classArmId: dto.classArmId ?? null,
       loginCredentials: { email: user.email, password: DEFAULT_PORTAL_PASSWORD },
     };
   }

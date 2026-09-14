@@ -5,6 +5,7 @@ import { ClassesService } from '../../classes/classes.service';
 import { StaffProfilesService } from '../../staff-profiles/staff-profiles.service';
 import { StudentsService } from '../../students/students.service';
 import { SubjectsService } from '../../subjects/subjects.service';
+import { TimetableService } from '../../timetable/timetable.service';
 
 /**
  * Thin read-side aggregation over Phase 0/1 services — not a new source
@@ -19,6 +20,7 @@ export class TeacherPortalController {
     private readonly students: StudentsService,
     private readonly classes: ClassesService,
     private readonly requestContext: RequestContextService,
+    private readonly timetable: TimetableService,
   ) {}
 
   @Roles('TEACHER')
@@ -48,10 +50,18 @@ export class TeacherPortalController {
   }
 
   @Roles('TEACHER')
+  @Get('class-teacher-arms')
+  myClassTeacherArms() {
+    // Narrower than class-arms above — only arms where this teacher is
+    // the class teacher, not just a subject teacher. Backs the
+    // attendance-taking picker (AttendanceService restricts taking/
+    // correcting attendance to the class teacher only).
+    return this.classes.listClassTeacherArmsForCurrentTeacher();
+  }
+
+  @Roles('TEACHER')
   @Get('timetable')
   myTimetable() {
-    // No Timetable model exists in Phase 0/1 — an honest stub rather than
-    // fabricated schedule data (Phase 4 doc's non-goals section).
-    return { entries: [], note: 'Timetable data source not yet built (Phase 1 scope).' };
+    return this.timetable.getForCurrentTeacher();
   }
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { AllowAnyAuthenticatedRole } from '../../common/rbac/decorators/allow-any-role.decorator';
 import { Roles } from '../../common/rbac/decorators/roles.decorator';
 import { AcademicSessionsService } from './academic-sessions.service';
@@ -21,6 +21,14 @@ export class AcademicSessionsController {
     return this.service.listSessions();
   }
 
+  @AllowAnyAuthenticatedRole()
+  @Get('academic-sessions/current')
+  async getCurrent() {
+    const session = await this.service.getCurrentSession();
+    const term = await this.service.getCurrentTerm();
+    return { session, term };
+  }
+
   @Roles('PROPRIETOR', 'PRINCIPAL')
   @Post('terms')
   createTerm(@Body() dto: CreateTermDto) {
@@ -31,5 +39,15 @@ export class AcademicSessionsController {
   @Get('academic-sessions/:id/terms')
   listTerms(@Param('id') id: string) {
     return this.service.listTerms(id);
+  }
+
+  // The one action that flips which session/term is "current" — see
+  // AcademicSessionsService.activateTerm. Backs both "advance to next
+  // term" and "start new session" (create the term, then activate it) in
+  // the topbar's session/term picker.
+  @Roles('PROPRIETOR', 'PRINCIPAL')
+  @Patch('terms/:id/activate')
+  activateTerm(@Param('id') id: string) {
+    return this.service.activateTerm(id);
   }
 }

@@ -15,6 +15,7 @@ import { CampusesModule } from './modules/campuses/campuses.module';
 import { CbtExamsModule } from './modules/cbt-exams/cbt-exams.module';
 import { ClassesModule } from './modules/classes/classes.module';
 import { CommunicationModule } from './modules/communication/communication.module';
+import { GradingScaleModule } from './modules/grading-scale/grading-scale.module';
 import { GuardiansModule } from './modules/guardians/guardians.module';
 import { HealthModule } from './modules/health/health.module';
 import { LessonsModule } from './modules/lessons/lessons.module';
@@ -27,6 +28,7 @@ import { StaffProfilesModule } from './modules/staff-profiles/staff-profiles.mod
 import { StudentsModule } from './modules/students/students.module';
 import { SubjectsModule } from './modules/subjects/subjects.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
+import { TimetableModule } from './modules/timetable/timetable.module';
 import { UsersModule } from './modules/users/users.module';
 
 @Module({
@@ -57,11 +59,13 @@ import { UsersModule } from './modules/users/users.module';
     StudentsModule,
     GuardiansModule,
     AttendanceModule,
+    GradingScaleModule,
     ResultsModule,
     AssignmentsModule,
     LessonsModule,
     CbtExamsModule,
     CommunicationModule,
+    TimetableModule,
     TeacherPortalModule,
     StudentPortalModule,
     ParentPortalModule,

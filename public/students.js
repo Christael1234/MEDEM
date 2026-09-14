@@ -15,71 +15,258 @@
     });
   }
   // ---- Students (real) ----
+  const LEVEL_LABELS = { NURSERY: 'Nursery', PRIMARY: 'Primary', JUNIOR_SECONDARY: 'Junior Secondary', SENIOR_SECONDARY: 'Senior Secondary' };
+  const STREAM_LABELS = { SCIENCE: 'Science', ART: 'Art' };
+  let lastLoadedStudents = [];
+  let lastArmInfoById = {};
   async function loadRealStudents() {
     const tbody = document.getElementById('realStudentsBody');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="4">Loading students…</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5">Loading students…</td></tr>';
     try {
-      const students = await window.SchoolOS.api('/students');
-      tbody.innerHTML = students.length ? students.map((s) => `<tr><td><div class="person-cell"><span class="mini-avatar">${window.SchoolOS.initialsOf(s.firstName + ' ' + s.lastName)}</span>${s.firstName} ${s.lastName}</div></td><td>${s.admissionNo}</td><td><span class="status">${s.status}</span></td><td class="row-action"><button class="outline-button" data-view-student="${s.id}">View</button></td></tr>`).join('') : '<tr><td colspan="4">No students yet.</td></tr>';
+      const [students, classes] = await Promise.all([window.SchoolOS.api('/students'), window.SchoolOS.api('/classes').catch(() => [])]);
+      lastLoadedStudents = students;
+      lastArmInfoById = {};
+      classes.forEach((c) => (c.arms || []).forEach((a) => { lastArmInfoById[a.id] = { className: c.name, armName: a.name, level: c.level }; }));
+      renderStudentsTable();
     } catch (err) {
-      tbody.innerHTML = `<tr><td colspan="4">Could not load students (${err.message})</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5">Could not load students (${err.message})</td></tr>`;
     }
   }
+  function renderStudentsTable() {
+    const tbody = document.getElementById('realStudentsBody');
+    if (!tbody) return;
+    const filterSelect = document.getElementById('studentsLevelFilter');
+    const level = filterSelect ? filterSelect.value : '';
+    const students = level ? lastLoadedStudents.filter((s) => (lastArmInfoById[s.currentClassArmId] || {}).level === level) : lastLoadedStudents;
+    tbody.innerHTML = students.length ? students.map((s) => {
+      const arm = lastArmInfoById[s.currentClassArmId];
+      return `<tr><td><div class="person-cell"><span class="mini-avatar">${window.SchoolOS.initialsOf(s.firstName + ' ' + s.lastName)}</span>${s.firstName} ${s.lastName}</div></td><td>${s.admissionNo}</td><td>${arm ? `${arm.className} · ${arm.armName}` : '—'}</td><td><span class="status">${s.status}</span></td><td class="row-action"><button class="outline-button" data-view-student="${s.id}">View</button></td></tr>`;
+    }).join('') : `<tr><td colspan="5">No students${level ? ' at this level' : ''} yet.</td></tr>`;
+  }
 
-  async function openNewStudentModal() {
-    let campuses = [], classArms = [];
-    try {
-      campuses = await window.SchoolOS.api('/campuses');
-      const classes = await window.SchoolOS.api('/classes');
-      classArms = classes.flatMap((c) => (c.arms || []).map((a) => ({ id: a.id, label: `${c.name} · ${a.name}` })));
-    } catch (err) { window.SchoolOS.toast(`Could not load campuses/classes (${err.message})`); return; }
-    if (!campuses.length) { window.SchoolOS.toast('No campuses found for this tenant'); return; }
-    const campusByName = Object.fromEntries(campuses.map((c) => [c.name, c.id]));
-    const armByLabel = Object.fromEntries(classArms.map((a) => [a.label, a.id]));
+  const GUARDIAN_RELATIONSHIPS = [['MOTHER', 'Mother'], ['FATHER', 'Father'], ['GRANDPARENT', 'Grandparent'], ['SIBLING', 'Sibling'], ['LEGAL_GUARDIAN', 'Legal guardian'], ['OTHER', 'Other']];
 
-    window.SchoolOS.formModal({
-      eyebrow: 'Students', title: 'Add student',
-      sub: 'Creates a real student record via the SchoolOS API — POST /students.',
-      fields: [
-        { name: 'firstName', label: 'First name', placeholder: 'e.g. Ada' },
-        { name: 'lastName', label: 'Last name', placeholder: 'e.g. Okafor' },
-        { name: 'campus', label: 'Campus', type: 'select', options: campuses.map((c) => c.name) },
-        { name: 'classArm', label: 'Class', type: 'select', options: ['Unassigned', ...classArms.map((a) => a.label)] },
-        { name: 'gender', label: 'Gender', type: 'select', options: ['—', 'Male', 'Female'] },
-        { name: 'dateOfBirth', label: 'Date of birth', type: 'date' },
-      ],
-      submitLabel: 'Add student',
-      onSubmit: async (d) => {
-        const payload = {
-          campusId: campusByName[d.campus], firstName: (d.firstName || '').trim(), lastName: (d.lastName || '').trim(),
-          gender: d.gender && d.gender !== '—' ? d.gender : undefined, dateOfBirth: d.dateOfBirth || undefined,
-          currentClassArmId: d.classArm && d.classArm !== 'Unassigned' ? armByLabel[d.classArm] : undefined,
-        };
-        if (!payload.firstName || !payload.lastName || !payload.campusId) { window.SchoolOS.toast('First name, last name and campus are required'); return; }
+  function guardianBlockHtml(idx, required) {
+    return `<div class="detail-section" data-guardian-block="${idx}">
+      <p class="eyebrow">Parent / guardian ${idx}${required ? ' (required)' : ''}</p>
+      <div class="form-field">
+        <label>Search an existing parent</label>
+        <input type="text" data-guardian-search="${idx}" placeholder="Type a name to find a parent already on file…" autocomplete="off">
+        <div data-guardian-results="${idx}" class="guardian-search-results"></div>
+      </div>
+      <div data-guardian-selected="${idx}" class="guardian-selected-chip" style="display:none"></div>
+      <div data-guardian-new-fields="${idx}">
+        <p class="modal-sub" style="margin:6px 0">Or add a new parent:</p>
+        <div class="inline-edit-row">
+          <input data-guardian-first="${idx}" placeholder="First name" aria-label="Parent ${idx} first name">
+          <input data-guardian-last="${idx}" placeholder="Last name" aria-label="Parent ${idx} last name">
+        </div>
+        <div class="inline-edit-row">
+          <input data-guardian-phone="${idx}" placeholder="Phone (optional)" aria-label="Parent ${idx} phone">
+          <input data-guardian-email="${idx}" placeholder="Email (optional)" aria-label="Parent ${idx} email">
+        </div>
+      </div>
+      <div class="form-field">
+        <label>Relationship to student</label>
+        <select data-guardian-relationship="${idx}" aria-label="Parent ${idx} relationship">${GUARDIAN_RELATIONSHIPS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>
+      </div>
+    </div>`;
+  }
+
+  /** Wires the search-as-you-type + select/clear behavior for one guardian
+   * block. Selecting a search result hides the new-guardian fields (the
+   * selection takes precedence) and shows a "Selected: Name ✕" chip. */
+  function wireGuardianBlock(idx) {
+    const search = document.querySelector(`[data-guardian-search="${idx}"]`);
+    const results = document.querySelector(`[data-guardian-results="${idx}"]`);
+    const selected = document.querySelector(`[data-guardian-selected="${idx}"]`);
+    const newFields = document.querySelector(`[data-guardian-new-fields="${idx}"]`);
+    const block = document.querySelector(`[data-guardian-block="${idx}"]`);
+    let debounceTimer;
+    search.addEventListener('input', () => {
+      clearTimeout(debounceTimer);
+      const q = search.value.trim();
+      if (q.length < 2) { results.innerHTML = ''; return; }
+      debounceTimer = setTimeout(async () => {
         try {
-          const created = await window.SchoolOS.api('/students', { method: 'POST', body: JSON.stringify(payload) });
-          window.SchoolOS.toast(`${payload.firstName} ${payload.lastName} added`);
-          loadRealStudents();
-          if (created && created.loginCredentials) {
-            window.SchoolOS.detailModal({
-              eyebrow: 'Students', title: 'Login created',
-              sub: `A student portal login was generated automatically for ${payload.firstName} ${payload.lastName}. Share these with them directly — they won't be shown again.`,
-              rows: [['Email', created.loginCredentials.email], ['Password', created.loginCredentials.password]],
-            });
-          }
-        } catch (err) { window.SchoolOS.toast(`Could not add student (${err.message})`); }
-      },
+          const matches = await window.SchoolOS.api('/guardians?search=' + encodeURIComponent(q));
+          results.innerHTML = matches.length
+            ? matches.map((g) => `<div class="guardian-search-result-row" data-pick-guardian="${g.id}" data-pick-guardian-name="${g.firstName} ${g.lastName}">${g.firstName} ${g.lastName}${g.phone ? ' · ' + g.phone : ''}</div>`).join('')
+            : '<div class="guardian-search-result-row guardian-search-empty">No match — add a new parent below</div>';
+        } catch (err) { results.innerHTML = ''; }
+      }, 250);
+    });
+    results.addEventListener('click', (e) => {
+      const row = e.target.closest('[data-pick-guardian]');
+      if (!row) return;
+      block.dataset.selectedGuardianId = row.dataset.pickGuardian;
+      selected.style.display = '';
+      selected.innerHTML = `Selected: <strong>${row.dataset.pickGuardianName}</strong> <button type="button" class="outline-button" data-clear-guardian="${idx}">✕</button>`;
+      newFields.style.display = 'none';
+      search.value = ''; results.innerHTML = '';
+    });
+    selected.addEventListener('click', (e) => {
+      if (!e.target.closest('[data-clear-guardian]')) return;
+      delete block.dataset.selectedGuardianId;
+      selected.style.display = 'none'; selected.innerHTML = '';
+      newFields.style.display = '';
     });
   }
 
+  /** Reads one guardian block's state (a picked existing guardian takes
+   * precedence over the new-guardian fields) into the payload shape
+   * StudentsService.create expects. Returns null if the block is
+   * completely empty (used to treat guardian 2 as "not provided"). */
+  function readGuardianBlock(idx) {
+    const block = document.querySelector(`[data-guardian-block="${idx}"]`);
+    const relationship = document.querySelector(`[data-guardian-relationship="${idx}"]`).value;
+    if (block.dataset.selectedGuardianId) {
+      return { idKey: block.dataset.selectedGuardianId, relationship };
+    }
+    const firstName = document.querySelector(`[data-guardian-first="${idx}"]`).value.trim();
+    const lastName = document.querySelector(`[data-guardian-last="${idx}"]`).value.trim();
+    if (!firstName && !lastName) return null;
+    const phone = document.querySelector(`[data-guardian-phone="${idx}"]`).value.trim();
+    const email = document.querySelector(`[data-guardian-email="${idx}"]`).value.trim();
+    return { firstName, lastName, phone: phone || undefined, email: email || undefined, relationship };
+  }
+
+  /** No Campus field and no arm/section picker — a class already belongs
+   * to one campus (SchoolClass.campusId), so picking a class fixes the
+   * campus implicitly, and the arm within it is assigned at random from
+   * whichever arms that class has (real schools don't let a parent or
+   * admin cherry-pick a section). Senior Secondary students pick a
+   * Science/Art stream instead, which is what determines which class
+   * they actually belong in — that stream is saved right after creation
+   * via the same PATCH /students/:id/stream endpoint the admin/self-serve
+   * stream editors already use. */
+  async function openNewStudentModal() {
+    let campuses = [], classes = [];
+    try {
+      [campuses, classes] = await Promise.all([window.SchoolOS.api('/campuses'), window.SchoolOS.api('/classes')]);
+    } catch (err) { window.SchoolOS.toast(`Could not load classes (${err.message})`); return; }
+
+    const campusNameById = Object.fromEntries(campuses.map((c) => [c.id, c.name]));
+    const multiCampus = new Set(classes.map((c) => c.campusId)).size > 1;
+    const classById = Object.fromEntries(classes.map((c) => [c.id, c]));
+    const classesByLevel = {};
+    classes.forEach((c) => { (classesByLevel[c.level] ||= []).push(c); });
+    const levelsWithClasses = Object.keys(LEVEL_LABELS).filter((lvl) => (classesByLevel[lvl] || []).length);
+    if (!levelsWithClasses.length) { window.SchoolOS.toast('No classes found — add a class first (Academics → Classes)'); return; }
+
+    const classOptionsHtml = (level) => (classesByLevel[level] || []).map((c) => `<option value="${c.id}">${c.name}${multiCampus ? ' · ' + (campusNameById[c.campusId] || '') : ''}</option>`).join('');
+
+    window.SchoolOS.openModal(`<p class="eyebrow">Students</p><h2>Add student</h2>
+      <p class="modal-sub">A parent/guardian is required. The class arm/section is assigned automatically.</p>
+      <form onsubmit="__addStudentSubmit(event)">
+        <div class="form-field"><label>First name</label><input name="firstName" placeholder="e.g. Ada"></div>
+        <div class="form-field"><label>Last name</label><input name="lastName" placeholder="e.g. Okafor"></div>
+        <div class="form-field"><label>Level</label><select name="level" id="studentLevelSelect">${levelsWithClasses.map((l) => `<option value="${l}">${LEVEL_LABELS[l]}</option>`).join('')}</select></div>
+        <div class="form-field"><label>Class</label><select name="schoolClass" id="studentClassSelect">${classOptionsHtml(levelsWithClasses[0])}</select></div>
+        <div class="form-field" id="studentStreamField" style="${levelsWithClasses[0] === 'SENIOR_SECONDARY' ? '' : 'display:none'}"><label>Stream</label><select name="stream" id="studentStreamSelect2"><option value="">— Choose —</option>${Object.entries(STREAM_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></div>
+        <div class="form-field"><label>Gender</label><select name="gender"><option>—</option><option>Male</option><option>Female</option></select></div>
+        <div class="form-field"><label>Date of birth</label><input name="dateOfBirth" type="date"></div>
+        ${guardianBlockHtml(1, true)}
+        <button type="button" class="outline-button" id="addSecondGuardianBtn">+ Add a second parent/guardian</button>
+        <div id="secondGuardianContainer"></div>
+        <div class="form-actions"><button type="button" class="outline-button" data-modal-close>Cancel</button><button type="submit" class="new-button">Add student</button></div>
+      </form>`);
+
+    const levelSelect = document.getElementById('studentLevelSelect');
+    const classSelect = document.getElementById('studentClassSelect');
+    const streamField = document.getElementById('studentStreamField');
+    levelSelect.addEventListener('change', () => {
+      classSelect.innerHTML = classOptionsHtml(levelSelect.value);
+      streamField.style.display = levelSelect.value === 'SENIOR_SECONDARY' ? '' : 'none';
+    });
+
+    wireGuardianBlock(1);
+    document.getElementById('addSecondGuardianBtn').addEventListener('click', (e) => {
+      document.getElementById('secondGuardianContainer').innerHTML = guardianBlockHtml(2, false);
+      wireGuardianBlock(2);
+      e.target.style.display = 'none';
+    }, { once: true });
+
+    window.__addStudentSubmit = async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const firstName = (fd.get('firstName') || '').trim();
+      const lastName = (fd.get('lastName') || '').trim();
+      const level = fd.get('level');
+      const schoolClassId = fd.get('schoolClass');
+      const stream = fd.get('stream');
+      const gender = fd.get('gender');
+      const dateOfBirth = fd.get('dateOfBirth');
+      if (!firstName || !lastName || !schoolClassId) { window.SchoolOS.toast('First name, last name and class are required'); return; }
+      if (level === 'SENIOR_SECONDARY' && !stream) { window.SchoolOS.toast('Choose a stream (Science or Art) for a Senior Secondary student'); return; }
+
+      const cls = classById[schoolClassId];
+      // For Senior Secondary, the chosen stream is what actually picks the
+      // class — only arms an admin has tagged for that stream are
+      // eligible, never a stream-agnostic arm from this class.
+      const eligibleArms = level === 'SENIOR_SECONDARY' ? (cls.arms || []).filter((a) => a.stream === stream) : (cls.arms || []);
+      if (!eligibleArms.length) {
+        window.SchoolOS.toast(level === 'SENIOR_SECONDARY'
+          ? `No ${STREAM_LABELS[stream]} arms configured for ${cls.name} yet — tag one first (Academics → Classes → ${cls.name})`
+          : `${cls.name} has no arms/sections yet — add one first (Academics → Classes)`);
+        return;
+      }
+      const randomArm = eligibleArms[Math.floor(Math.random() * eligibleArms.length)];
+
+      const guardian1 = readGuardianBlock(1);
+      if (!guardian1) { window.SchoolOS.toast('A parent/guardian is required — search for an existing one or enter a name'); return; }
+      const guardian2 = document.querySelector('[data-guardian-block="2"]') ? readGuardianBlock(2) : null;
+
+      const payload = {
+        campusId: cls.campusId, firstName, lastName,
+        gender: gender && gender !== '—' ? gender : undefined, dateOfBirth: dateOfBirth || undefined,
+        currentClassArmId: randomArm.id,
+        guardianRelationship: guardian1.relationship,
+        ...(guardian1.idKey ? { guardianId: guardian1.idKey } : { guardianFirstName: guardian1.firstName, guardianLastName: guardian1.lastName, guardianPhone: guardian1.phone, guardianEmail: guardian1.email }),
+        ...(guardian2 ? {
+          secondGuardianRelationship: guardian2.relationship,
+          ...(guardian2.idKey ? { secondGuardianId: guardian2.idKey } : { secondGuardianFirstName: guardian2.firstName, secondGuardianLastName: guardian2.lastName, secondGuardianPhone: guardian2.phone, secondGuardianEmail: guardian2.email }),
+        } : {}),
+      };
+
+      try {
+        const created = await window.SchoolOS.api('/students', { method: 'POST', body: JSON.stringify(payload) });
+        if (level === 'SENIOR_SECONDARY' && stream) {
+          try { await window.SchoolOS.api('/students/' + created.id + '/stream', { method: 'PATCH', body: JSON.stringify({ stream }) }); } catch (err) { window.SchoolOS.toast(`Student added, but could not set stream (${err.message})`); }
+        }
+        window.SchoolOS.toast(`${firstName} ${lastName} added to ${cls.name} · ${randomArm.name}`);
+        loadRealStudents();
+        window.SchoolOS.closeModal();
+        if (created && created.loginCredentials) {
+          const guardianRows = (created.guardianLoginCredentials || []).flatMap((g) => [[`${g.name} (parent)`, g.email], ['— password', g.password]]);
+          window.SchoolOS.detailModal({
+            eyebrow: 'Students', title: 'Login(s) created',
+            sub: `Portal logins were generated automatically for ${firstName} ${lastName}${guardianRows.length ? ' and any newly added parent(s)' : ''}. Share these directly — they won't be shown again. (A reused existing parent keeps their existing login.)`,
+            rows: [['Student', created.loginCredentials.email], ['— password', created.loginCredentials.password], ...guardianRows],
+          });
+        }
+      } catch (err) { window.SchoolOS.toast(`Could not add student (${err.message})`); }
+    };
+  }
+
   async function openStudentDetailModal(studentId) {
-    let s;
-    try { s = await window.SchoolOS.api('/students/' + studentId); } catch (err) { window.SchoolOS.toast(`Could not load student (${err.message})`); return; }
+    let s, classes = [], sessions = [];
+    try {
+      [s, classes, sessions] = await Promise.all([
+        window.SchoolOS.api('/students/' + studentId),
+        window.SchoolOS.api('/classes'),
+        window.SchoolOS.api('/academic-sessions'),
+      ]);
+    } catch (err) { window.SchoolOS.toast(`Could not load student (${err.message})`); return; }
     const user = window.SchoolOS.getUser();
     const canManage = user && (user.role === 'PROPRIETOR' || user.role === 'PRINCIPAL');
     const className = s.currentClassArm ? `${s.currentClassArm.schoolClass.name} · ${s.currentClassArm.name}` : 'Unassigned';
     const guardiansHtml = (s.guardianLinks || []).map((g) => `<div class="modal-detail-row"><span>${g.guardian.firstName} ${g.guardian.lastName} (${g.relationship})</span><strong>${g.guardian.phone || g.guardian.email || '—'}</strong></div>`).join('') || '<p class="modal-sub" style="margin:0">No guardians linked yet.</p>';
+
+    const classArms = classes.flatMap((c) => (c.arms || []).map((a) => ({ id: a.id, label: `${c.name} · ${a.name}` })));
+    const armByLabel = Object.fromEntries(classArms.map((a) => [a.label, a.id]));
+    const currentSession = sessions.find((sess) => sess.isCurrent) || sessions[0];
 
     window.__renameStudentSubmit = async (e) => {
       e.preventDefault();
@@ -88,9 +275,37 @@
         await window.SchoolOS.api('/students/' + studentId, { method: 'PATCH', body: JSON.stringify({ firstName: data.get('firstName'), lastName: data.get('lastName'), middleName: data.get('middleName') || undefined }) });
         window.SchoolOS.toast('Student updated');
         loadRealStudents();
-        openStudentDetailModal(studentId);
+        window.SchoolOS.closeModal();
       } catch (err) { window.SchoolOS.toast(`Could not update student (${err.message})`); }
     };
+
+    /** Real promotion/transfer, not a raw field edit — POST /students/:id/promote
+     * also records StudentClassHistory (CLAUDE.md treats this as an
+     * audited trail, not a silent overwrite). */
+    window.__moveStudentClassSubmit = async (e) => {
+      e.preventDefault();
+      const data = new FormData(e.target);
+      const classArmId = armByLabel[data.get('classArm')];
+      const reason = (data.get('reason') || '').trim() || undefined;
+      if (!classArmId) { window.SchoolOS.toast('Choose a class'); return; }
+      if (!currentSession) { window.SchoolOS.toast('No academic session configured yet'); return; }
+      try {
+        await window.SchoolOS.api('/students/' + studentId + '/promote', {
+          method: 'POST',
+          body: JSON.stringify({ classArmId, academicSessionId: currentSession.id, reason }),
+        });
+        window.SchoolOS.toast('Class updated');
+        loadRealStudents();
+        window.SchoolOS.closeModal();
+      } catch (err) { window.SchoolOS.toast(`Could not change class (${err.message})`); }
+    };
+
+    const isSeniorSecondary = s.currentClassArm && s.currentClassArm.schoolClass.level === 'SENIOR_SECONDARY';
+    const streamHtml = isSeniorSecondary
+      ? (canManage
+          ? `<div class="inline-edit-row"><select id="studentStreamSelect" aria-label="Stream"><option value="">— Not set —</option>${Object.entries(STREAM_LABELS).map(([k, v]) => `<option value="${k}" ${s.stream === k ? 'selected' : ''}>${v}</option>`).join('')}</select><button type="button" class="outline-button" data-save-student-stream="${studentId}">Save</button></div>`
+          : `<div class="modal-detail-row"><span>Stream</span><strong>${s.stream ? STREAM_LABELS[s.stream] : 'Not set'}</strong></div>`)
+      : '';
 
     window.SchoolOS.openModal(`<p class="eyebrow">Students</p><h2>Student details</h2>
       ${canManage ? `<form onsubmit="__renameStudentSubmit(event)">
@@ -100,18 +315,65 @@
       </form>` : `<p class="modal-sub">${s.firstName} ${s.lastName}</p>`}
       <div class="modal-detail-row"><span>Admission No.</span><strong>${s.admissionNo}</strong></div>
       <div class="modal-detail-row"><span>Status</span><strong>${s.status}</strong></div>
-      <div class="modal-detail-row"><span>Class</span><strong>${className}</strong></div>
+      ${canManage ? `<form class="inline-edit-row" onsubmit="__moveStudentClassSubmit(event)"><select name="classArm" aria-label="Class">${classArms.map((a) => `<option ${a.label === className ? 'selected' : ''}>${a.label}</option>`).join('')}</select><input name="reason" placeholder="Reason (optional)" aria-label="Reason for class change"><button type="submit" class="outline-button">Save</button></form>` : `<div class="modal-detail-row"><span>Class</span><strong>${className}</strong></div>`}
       <div class="modal-detail-row"><span>Gender</span><strong>${s.gender || '—'}</strong></div>
+      ${isSeniorSecondary ? `<div class="detail-section"><p class="eyebrow">Stream</p>${streamHtml}</div>` : ''}
       <div class="detail-section"><p class="eyebrow">Guardians</p>${guardiansHtml}</div>
       <div class="form-actions"><button class="outline-button" data-modal-close>Close</button></div>`);
+  }
+  async function saveStudentStream(studentId) {
+    const select = document.getElementById('studentStreamSelect');
+    if (!select.value) { window.SchoolOS.toast('Choose a stream first'); return; }
+    try {
+      await window.SchoolOS.api('/students/' + studentId + '/stream', { method: 'PATCH', body: JSON.stringify({ stream: select.value }) });
+      window.SchoolOS.toast('Stream updated');
+      loadRealStudents();
+      openStudentDetailModal(studentId);
+    } catch (err) { window.SchoolOS.toast(`Could not update stream (${err.message})`); }
   }
 
   function renderStudentsAddRow(role) {
     const row = document.getElementById('studentsAddRow');
     if (!row) return;
-    row.innerHTML = (role === 'proprietor' || role === 'principal') ? '<button class="new-button" id="addStudentBtn">+ Add student</button>' : '';
+    const canManage = role === 'proprietor' || role === 'principal';
+    const filterHtml = `<span class="tt-class-label">Filter by level</span><select id="studentsLevelFilter" class="level-filter-select" aria-label="Filter students by level"><option value="">All levels</option>${Object.entries(LEVEL_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>`;
+    const streamReqBtn = canManage ? '<button class="outline-button" id="streamRequestsBtn">Stream requests<span id="streamRequestsBadge"></span></button>' : '';
+    const addBtn = canManage ? '<button class="new-button" id="addStudentBtn">+ Add student</button>' : '';
+    row.innerHTML = filterHtml + streamReqBtn + addBtn;
     const btn = document.getElementById('addStudentBtn');
     if (btn) btn.addEventListener('click', openNewStudentModal);
+    const filterSelect = document.getElementById('studentsLevelFilter');
+    if (filterSelect) filterSelect.addEventListener('change', renderStudentsTable);
+    const streamReqEl = document.getElementById('streamRequestsBtn');
+    if (streamReqEl) {
+      streamReqEl.addEventListener('click', openStreamRequestsModal);
+      window.SchoolOS.api('/students/stream-requests?status=PENDING').then((reqs) => {
+        const badge = document.getElementById('streamRequestsBadge');
+        if (badge && reqs.length) badge.textContent = ' · ' + reqs.length;
+      }).catch(() => {});
+    }
+  }
+
+  /** Admin review queue for self-service stream-switch requests (SS1
+   * students only — see StudentsService.requestStreamChange). Approving
+   * moves the student's stream (and, if the class has an arm tagged for
+   * it, the student into that arm) server-side; nothing here mutates
+   * the student directly. */
+  async function openStreamRequestsModal() {
+    let requests = [];
+    try { requests = await window.SchoolOS.api('/students/stream-requests?status=PENDING'); } catch (err) { window.SchoolOS.toast(`Could not load stream requests (${err.message})`); return; }
+    const rowsHtml = requests.length ? requests.map((r) => `<div class="modal-detail-row"><span>${r.student.firstName} ${r.student.lastName} (${r.student.admissionNo})</span><span>Wants ${STREAM_LABELS[r.requestedStream]}${r.reason ? ' — ' + r.reason : ''}</span><span class="row-action"><button class="outline-button" data-approve-stream-request="${r.id}">Approve</button> <button class="outline-button" data-reject-stream-request="${r.id}">Reject</button></span></div>`).join('') : '<p class="modal-sub" style="margin:0">No pending stream requests.</p>';
+    window.SchoolOS.openModal(`<p class="eyebrow">Students</p><h2>Stream change requests</h2><p class="modal-sub">Only SS1 students can submit these. Approving moves the student into a matching arm if one is tagged for the new stream.</p>${rowsHtml}<div class="form-actions"><button class="outline-button" data-modal-close>Close</button></div>`);
+  }
+  async function reviewStreamRequest(id, approve) {
+    let reviewNote;
+    if (!approve) { reviewNote = window.prompt('Reason for rejecting (optional):') || undefined; }
+    try {
+      await window.SchoolOS.api('/students/stream-requests/' + id + '/review', { method: 'PATCH', body: JSON.stringify({ approve, reviewNote }) });
+      window.SchoolOS.toast(approve ? 'Stream change approved' : 'Stream change rejected');
+      loadRealStudents();
+      openStreamRequestsModal();
+    } catch (err) { window.SchoolOS.toast(`Could not review request (${err.message})`); }
   }
 
   // ---- Admissions (demo pipeline) ----
@@ -190,6 +452,9 @@
 
   document.addEventListener('click', (e) => {
     const viewStudent = e.target.closest('[data-view-student]'); if (viewStudent) openStudentDetailModal(viewStudent.dataset.viewStudent);
+    const saveStream = e.target.closest('[data-save-student-stream]'); if (saveStream) saveStudentStream(saveStream.dataset.saveStudentStream);
+    const approveStreamReq = e.target.closest('[data-approve-stream-request]'); if (approveStreamReq) reviewStreamRequest(approveStreamReq.dataset.approveStreamRequest, true);
+    const rejectStreamReq = e.target.closest('[data-reject-stream-request]'); if (rejectStreamReq) reviewStreamRequest(rejectStreamReq.dataset.rejectStreamRequest, false);
     const adv = e.target.closest('[data-advance-applicant]'); if (adv) advanceApplicant(adv.dataset.advanceApplicant);
     const va = e.target.closest('[data-view-applicant]'); if (va) openApplicantDetailModal(va.dataset.viewApplicant);
     const ra = e.target.closest('[data-review-applicant]'); if (ra) openApplicantReviewModal(ra.dataset.reviewApplicant);

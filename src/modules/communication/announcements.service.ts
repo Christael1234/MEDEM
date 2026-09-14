@@ -61,6 +61,47 @@ export class AnnouncementsService {
     return this.prisma.db.announcement.findMany({ orderBy: { createdAt: 'desc' } });
   }
 
+  /** Per-recipient read status — "did everyone see this?" AnnouncementsService
+   * never stored its own recipient list; it fans out through
+   * NotificationService.notify(), which already writes one Notification row
+   * per recipient tagged (entityType: 'Announcement', entityId). Reading
+   * those back gives the real per-person readAt with no new schema needed.
+   * Scoped to the announcement's own sender (or Proprietor/Principal
+   * oversight) — same "manage your own thing" discipline as Lessons/CBT
+   * exam ownership checks elsewhere, not open to every STAFF_ROLES caller
+   * the way listAnnouncements() is. */
+  async listRecipients(announcementId: string) {
+    const announcement = await this.prisma.db.announcement.findUniqueOrThrow({ where: { id: announcementId } });
+
+    const role = this.requestContext.getRole();
+    const userId = this.requestContext.getUserId();
+    if (role !== 'PROPRIETOR' && role !== 'PRINCIPAL' && announcement.createdByUserId !== userId) {
+      throw new ForbiddenException('Only the sender (or Proprietor/Principal) may see who received this message');
+    }
+
+    const notifications = await this.prisma.db.notification.findMany({
+      where: { entityType: 'Announcement', entityId: announcementId },
+      orderBy: { createdAt: 'asc' },
+      include: { recipient: { select: { firstName: true, lastName: true, role: true } } },
+    });
+
+    const readCount = notifications.filter((n) => n.readAt).length;
+    return {
+      announcementId: announcement.id,
+      title: announcement.title,
+      totalRecipients: notifications.length,
+      readCount,
+      unreadCount: notifications.length - readCount,
+      recipients: notifications.map((n) => ({
+        userId: n.recipientUserId,
+        firstName: n.recipient.firstName,
+        lastName: n.recipient.lastName,
+        role: n.recipient.role,
+        readAt: n.readAt,
+      })),
+    };
+  }
+
   private assertCanTargetAudience(audience: AnnouncementAudience): void {
     const role = this.requestContext.getRole();
     if (role === 'PROPRIETOR' || role === 'PRINCIPAL') return;

@@ -25,4 +25,12 @@ export class CreateTeacherDto {
   @IsOptional()
   @IsDateString()
   dateJoined?: string;
+
+  /** If set, this teacher becomes the class teacher of this ClassArm.
+   * Must belong to the same campus and must not already have a class
+   * teacher — both enforced server-side in StaffProfilesService, never
+   * trusted from the client. */
+  @IsOptional()
+  @IsString()
+  classArmId?: string;
 }

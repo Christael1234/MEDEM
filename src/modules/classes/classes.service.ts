@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
 import { RequestContextService } from '../../common/context/request-context';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -22,15 +22,20 @@ export class ClassesService {
     await this.prisma.db.campus.findUniqueOrThrow({ where: { id: dto.campusId } });
 
     return this.prisma.db.schoolClass.create({
-      data: tenantScopedCreate({ campusId: dto.campusId, name: dto.name, order: dto.order ?? 0 }),
+      data: tenantScopedCreate({
+        campusId: dto.campusId,
+        name: dto.name,
+        level: dto.level,
+        order: dto.order ?? 0,
+      }),
     });
   }
 
   listClasses(campusId?: string) {
     return this.prisma.db.schoolClass.findMany({
       where: campusId ? { campusId } : undefined,
-      orderBy: { order: 'asc' },
-      include: { arms: true },
+      orderBy: [{ level: 'asc' }, { order: 'asc' }],
+      include: { arms: true, promotesToClass: { select: { id: true, name: true } } },
     });
   }
 
@@ -43,6 +48,7 @@ export class ClassesService {
             classTeacher: { include: { user: { select: { firstName: true, lastName: true } } } },
           },
         },
+        promotesToClass: { select: { id: true, name: true } },
         teacherAssignments: {
           include: {
             subject: true,
@@ -55,17 +61,30 @@ export class ClassesService {
 
   async updateClass(id: string, dto: UpdateSchoolClassDto) {
     const before = await this.prisma.db.schoolClass.findUniqueOrThrow({ where: { id } });
+
+    if (dto.promotesToClassId) {
+      if (dto.promotesToClassId === id) {
+        throw new BadRequestException('A class cannot promote into itself');
+      }
+      await this.prisma.db.schoolClass.findUniqueOrThrow({ where: { id: dto.promotesToClassId } });
+    }
+
     const updated = await this.prisma.db.schoolClass.update({
       where: { id },
-      data: { name: dto.name ?? undefined },
+      data: {
+        name: dto.name ?? undefined,
+        level: dto.level ?? undefined,
+        order: dto.order ?? undefined,
+        promotesToClassId: dto.clearPromotesTo ? null : (dto.promotesToClassId ?? undefined),
+      },
     });
 
     await this.audit.log({
       action: 'CLASS_UPDATED',
       entityType: 'SchoolClass',
       entityId: id,
-      before: { name: before.name },
-      after: { name: updated.name },
+      before: { name: before.name, level: before.level, promotesToClassId: before.promotesToClassId },
+      after: { name: updated.name, level: updated.level, promotesToClassId: updated.promotesToClassId },
     });
 
     return updated;
@@ -79,6 +98,7 @@ export class ClassesService {
         schoolClassId: dto.schoolClassId,
         name: dto.name,
         classTeacherId: dto.classTeacherId,
+        stream: dto.stream,
       },
     });
   }
@@ -92,25 +112,52 @@ export class ClassesService {
    * extension's doc comment), so both are resolved through their
    * tenant-scoped parent (assertArmBelongsToTenant, and StaffProfile
    * itself which IS scoped) before the write — same pattern as
-   * createArm/assertTeacherCanActOnArm. */
+   * createArm/assertTeacherCanActOnArm. Covers both reassigning
+   * (classTeacherId) and unassigning (removeClassTeacher) an existing
+   * class teacher — StaffProfilesService.createTeacher covers the
+   * assign-at-creation path; this is the only other place it can change. */
   async updateArm(id: string, dto: UpdateClassArmDto) {
     await this.assertArmBelongsToTenant(id);
+
+    const before = await this.prisma.db.classArm.findUniqueOrThrow({
+      where: { id },
+      include: { schoolClass: { select: { campusId: true } } },
+    });
+
     if (dto.classTeacherId) {
-      await this.prisma.db.staffProfile.findUniqueOrThrow({ where: { id: dto.classTeacherId } });
+      const staffProfile = await this.prisma.db.staffProfile.findUniqueOrThrow({
+        where: { id: dto.classTeacherId },
+        select: { campusId: true },
+      });
+      if (staffProfile.campusId !== before.schoolClass.campusId) {
+        throw new BadRequestException('A class teacher must be assigned to a class at their own campus');
+      }
     }
 
-    const before = await this.prisma.db.classArm.findUniqueOrThrow({ where: { id } });
+    // A teacher leads exactly one arm at a time — reassigning them here
+    // clears classTeacherId on whatever other arm(s) they were class
+    // teacher of, rather than leaving them attached to both.
+    if (dto.classTeacherId) {
+      await this.prisma.db.classArm.updateMany({
+        where: { classTeacherId: dto.classTeacherId, id: { not: id } },
+        data: { classTeacherId: null },
+      });
+    }
     const updated = await this.prisma.db.classArm.update({
       where: { id },
-      data: { name: dto.name ?? undefined, classTeacherId: dto.classTeacherId ?? undefined },
+      data: {
+        name: dto.name ?? undefined,
+        classTeacherId: dto.removeClassTeacher ? null : (dto.classTeacherId ?? undefined),
+        stream: dto.clearStream ? null : (dto.stream ?? undefined),
+      },
     });
 
     await this.audit.log({
       action: 'CLASS_ARM_UPDATED',
       entityType: 'ClassArm',
       entityId: id,
-      before: { name: before.name, classTeacherId: before.classTeacherId },
-      after: { name: updated.name, classTeacherId: updated.classTeacherId },
+      before: { name: before.name, classTeacherId: before.classTeacherId, stream: before.stream },
+      after: { name: updated.name, classTeacherId: updated.classTeacherId, stream: updated.stream },
     });
 
     return updated;
@@ -124,6 +171,24 @@ export class ClassesService {
     await this.prisma.db.schoolClass.findFirstOrThrow({
       where: { arms: { some: { id: classArmId } } },
     });
+  }
+
+  /** "SS1" isn't a magic label anywhere in the schema — it's whichever
+   * SENIOR_SECONDARY class has no other SENIOR_SECONDARY class promoting
+   * into it (promotesToClassId), using the same promotion chain the
+   * bulk-promotion feature already relies on rather than a second,
+   * separately-maintained "is this the entry class" flag. A class fed
+   * only from JUNIOR_SECONDARY (or with no incoming promotion at all)
+   * still counts as the entry point. Backs StudentsService's rule that
+   * only a student's first Senior Secondary class may request a stream
+   * switch. */
+  async isEntrySeniorSecondaryClass(schoolClassId: string): Promise<boolean> {
+    const cls = await this.prisma.db.schoolClass.findUniqueOrThrow({
+      where: { id: schoolClassId },
+      select: { level: true, promotedFromClasses: { select: { level: true } } },
+    });
+    if (cls.level !== 'SENIOR_SECONDARY') return false;
+    return !cls.promotedFromClasses.some((p) => p.level === 'SENIOR_SECONDARY');
   }
 
   /** Build order steps 9-10: attendance/results creation is "scoped to
@@ -155,6 +220,32 @@ export class ClassesService {
     });
     if (!assignment) {
       throw new ForbiddenException('Teacher is not assigned to this class');
+    }
+  }
+
+  /** Attendance is restricted to the class teacher only — unlike results/
+   * lessons/assignments/CBT (assertTeacherCanActOnArm), a subject teacher
+   * without the class-teacher role for this arm may not take or correct
+   * attendance for it. */
+  async assertTeacherIsClassTeacherOfArm(classArmId: string): Promise<void> {
+    if (this.requestContext.getRole() !== 'TEACHER') return;
+
+    const userId = this.requestContext.getUserId();
+    const staffProfile = await this.prisma.db.staffProfile.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    if (!staffProfile) {
+      throw new ForbiddenException('No staff profile linked to this account');
+    }
+
+    const arm = await this.prisma.db.schoolClass.findFirstOrThrow({
+      where: { arms: { some: { id: classArmId } } },
+      select: { arms: { where: { id: classArmId }, select: { classTeacherId: true } } },
+    });
+
+    if (arm.arms[0]?.classTeacherId !== staffProfile.id) {
+      throw new ForbiddenException('Only this class’s class teacher may take or correct its attendance');
     }
   }
 
@@ -205,6 +296,26 @@ export class ClassesService {
 
     const arms = await this.prisma.db.classArm.findMany({
       where: { id: { in: armIds } },
+      select: { id: true, name: true, schoolClass: { select: { name: true } } },
+    });
+    return arms.map((a) => ({ id: a.id, schoolClassName: a.schoolClass.name, armName: a.name }));
+  }
+
+  /** Narrower than listDetailedArmsForCurrentTeacher — class-teacher arms
+   * only, no subject-assignment arms. Backs the attendance-taking picker,
+   * which mirrors assertTeacherIsClassTeacherOfArm's restriction. */
+  async listClassTeacherArmsForCurrentTeacher(): Promise<
+    { id: string; schoolClassName: string; armName: string }[]
+  > {
+    const userId = this.requestContext.getUserId();
+    const staffProfile = await this.prisma.db.staffProfile.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    if (!staffProfile) return [];
+
+    const arms = await this.prisma.db.classArm.findMany({
+      where: { classTeacherId: staffProfile.id },
       select: { id: true, name: true, schoolClass: { select: { name: true } } },
     });
     return arms.map((a) => ({ id: a.id, schoolClassName: a.schoolClass.name, armName: a.name }));

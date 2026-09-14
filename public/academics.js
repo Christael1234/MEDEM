@@ -34,7 +34,7 @@
     const user = window.SchoolOS.getUser();
     const canCreate = user && (user.role === 'PROPRIETOR' || user.role === 'PRINCIPAL');
     const addButton = canCreate ? '<button class="new-button" data-modal="new-teacher">+ Add teacher</button>' : '';
-    return `<section class="page workspace-page" id="${window.SchoolOS.slug(label)}"><div class="page-heading"><div><p class="eyebrow">Live from the API</p><h1>${label}</h1><p class="subtitle">Real teaching staff for the signed-in tenant.</p></div>${addButton}</div><section class="data-card"><table class="data-table"><thead><tr><th>Teacher</th><th>Staff ID</th><th>Department</th><th>Login email</th><th></th></tr></thead><tbody id="realTeachersBody"><tr><td colspan="5">Sign in to load teachers…</td></tr></tbody></table></section></section>`;
+    return `<section class="page workspace-page" id="${window.SchoolOS.slug(label)}"><div class="page-heading"><div><p class="eyebrow">Staff</p><h1>${label}</h1><p class="subtitle">Real teaching staff for the signed-in tenant.</p></div>${addButton}</div><section class="data-card"><div class="data-toolbar"><span class="tt-class-label">Filter by level</span><select id="teachersLevelFilter" class="level-filter-select" aria-label="Filter teachers by level"><option value="">All levels</option>${Object.entries(LEVEL_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select></div><table class="data-table"><thead><tr><th>Teacher</th><th>Staff ID</th><th>Department</th><th>Login email</th><th></th></tr></thead><tbody id="realTeachersBody"><tr><td colspan="5">Sign in to load teachers…</td></tr></tbody></table></section></section>`;
   }
   async function openNewTeacherModal() {
     let campuses = [], classes = [], subjects = [];
@@ -45,65 +45,137 @@
     const campusByName = Object.fromEntries(campuses.map((c) => [c.name, c.id]));
     const subjectByName = Object.fromEntries(subjects.map((s) => [s.name, s.id]));
 
+    // Class-teacher candidates: only arms with no classTeacherId yet
+    // (mirrors the server's own check), grouped by campus since a class
+    // teacher should be based at their class's campus — the dropdown
+    // re-filters when the Campus field changes, see below.
+    const unassignedArmsByCampusId = {};
+    classes.forEach((c) => {
+      const openArms = (c.arms || []).filter((a) => !a.classTeacherId).map((a) => ({ id: a.id, label: `${c.name} · ${a.name}` }));
+      if (openArms.length) (unassignedArmsByCampusId[c.campusId] ||= []).push(...openArms);
+    });
+    const armOptionsFor = (campusName) => unassignedArmsByCampusId[campusByName[campusName]] || [];
+
     window.SchoolOS.formModal({
       eyebrow: 'Teachers', title: 'Add teacher',
-      sub: 'Creates a real teacher account via the SchoolOS API — POST /staff-profiles/teachers. Optionally assign them as the subject teacher for one or more classes right away.',
+      sub: 'Optionally make them class teacher of one unassigned class at their campus, and/or the subject teacher for one or more classes.',
       fields: [
         { name: 'firstName', label: 'First name', placeholder: 'e.g. Amina' }, { name: 'lastName', label: 'Last name', placeholder: 'e.g. Yusuf' },
         { name: 'campus', label: 'Campus', type: 'select', options: campuses.map((c) => c.name) },
         { name: 'department', label: 'Department', placeholder: 'e.g. Academics' }, { name: 'position', label: 'Position', placeholder: 'e.g. Class Teacher' },
+        { name: 'classArm', label: 'Class teacher of (optional)', type: 'select', options: ['None', ...armOptionsFor(campuses[0].name).map((a) => a.label)] },
         { name: 'subject', label: 'Subject to teach (optional)', type: 'select', options: ['None', ...subjects.map((s) => s.name)] },
         { name: 'classIds', label: 'Classes they teach this subject in', type: 'checkboxes', options: classes.map((c) => ({ value: c.id, label: c.name })) },
       ],
       submitLabel: 'Add teacher',
       onSubmit: async (d) => {
-        const payload = { campusId: campusByName[d.campus], firstName: (d.firstName || '').trim(), lastName: (d.lastName || '').trim(), department: d.department || undefined, position: d.position || undefined };
+        const armByLabel = Object.fromEntries(armOptionsFor(d.campus).map((a) => [a.label, a.id]));
+        const payload = {
+          campusId: campusByName[d.campus], firstName: (d.firstName || '').trim(), lastName: (d.lastName || '').trim(),
+          department: d.department || undefined, position: d.position || undefined,
+          classArmId: d.classArm && d.classArm !== 'None' ? armByLabel[d.classArm] : undefined,
+        };
         if (!payload.firstName || !payload.lastName || !payload.campusId) { window.SchoolOS.toast('First name, last name and campus are required'); return; }
         const chosenClassIds = [].concat(d.classIds || []);
         const subjectId = d.subject && d.subject !== 'None' ? subjectByName[d.subject] : null;
         if (chosenClassIds.length && !subjectId) { window.SchoolOS.toast('Select a subject to assign to those classes'); return; }
+        const hasAnyAssignment = payload.classArmId || (subjectId && chosenClassIds.length);
+        if (!hasAnyAssignment && !window.confirm(`${payload.firstName} ${payload.lastName} won't be a class teacher or assigned to teach any subject yet — add them anyway?`)) return;
         try {
           const created = await window.SchoolOS.api('/staff-profiles/teachers', { method: 'POST', body: JSON.stringify(payload) });
           loadRealTeachers();
-          let assignedNote = '';
+          const notes = [];
+          if (payload.classArmId) notes.push(`class teacher of ${d.classArm}`);
           if (subjectId && chosenClassIds.length) {
             for (const schoolClassId of chosenClassIds) {
               await window.SchoolOS.api('/teacher-subject-assignments', { method: 'POST', body: JSON.stringify({ staffProfileId: created.id, schoolClassId, subjectId }) });
             }
-            assignedNote = ` · assigned ${d.subject} in ${chosenClassIds.length} class${chosenClassIds.length > 1 ? 'es' : ''}`;
+            notes.push(`assigned ${d.subject} in ${chosenClassIds.length} class${chosenClassIds.length > 1 ? 'es' : ''}`);
           }
-          window.SchoolOS.toast(`${payload.firstName} ${payload.lastName} added${assignedNote}`);
+          window.SchoolOS.toast(`${payload.firstName} ${payload.lastName} added${notes.length ? ' · ' + notes.join(' · ') : ''}`);
           if (created && created.loginCredentials) {
             window.SchoolOS.detailModal({ eyebrow: 'Teachers', title: 'Login created', sub: `A teacher portal login was generated automatically for ${payload.firstName} ${payload.lastName}. Share these with them directly — they won't be shown again.`, rows: [['Email', created.loginCredentials.email], ['Password', created.loginCredentials.password]] });
           }
         } catch (err) { window.SchoolOS.toast(`Could not add teacher (${err.message})`); }
       },
     });
+
+    const form = document.querySelector('.modal-overlay form');
+    const campusSelect = form && form.querySelector('select[name="campus"]');
+    const armSelect = form && form.querySelector('select[name="classArm"]');
+    if (campusSelect && armSelect) {
+      campusSelect.addEventListener('change', () => {
+        armSelect.innerHTML = ['None', ...armOptionsFor(campusSelect.value).map((a) => a.label)].map((o) => `<option>${o}</option>`).join('');
+      });
+    }
   }
+  let lastLoadedTeachers = [];
+  let lastTeacherLevelsById = {};
   async function loadRealTeachers() {
     const tbody = document.getElementById('realTeachersBody');
     if (!tbody || !window.SchoolOS.getAccessToken()) return;
     tbody.innerHTML = '<tr><td colspan="5">Loading teachers…</td></tr>';
     try {
-      const staff = await window.SchoolOS.api('/staff-profiles');
-      const teachers = staff.filter((s) => s.user && s.user.role === 'TEACHER');
-      tbody.innerHTML = teachers.length ? teachers.map((s) => `<tr><td><div class="person-cell"><span class="mini-avatar">${window.SchoolOS.initialsOf(s.user.firstName + ' ' + s.user.lastName)}</span>${s.user.firstName} ${s.user.lastName}</div></td><td>${s.staffId}</td><td>${s.department || '—'}</td><td>${s.user.email}</td><td class="row-action"><button class="outline-button" data-view-teacher="${s.id}">View</button></td></tr>`).join('') : '<tr><td colspan="5">No teachers yet.</td></tr>';
+      const [staff, classes] = await Promise.all([window.SchoolOS.api('/staff-profiles'), window.SchoolOS.api('/classes')]);
+      lastLoadedTeachers = staff.filter((s) => s.user && s.user.role === 'TEACHER');
+
+      // A teacher's level(s) come from two signals: being class teacher of
+      // an arm (arm.classTeacherId, level via its class), or being the
+      // subject teacher for a class (teacher-subject-assignments) —
+      // fetched per class since the list endpoint doesn't include them.
+      const levelsById = {};
+      const addLevel = (staffProfileId, level) => { (levelsById[staffProfileId] ||= new Set()).add(level); };
+      classes.forEach((c) => (c.arms || []).forEach((a) => { if (a.classTeacherId) addLevel(a.classTeacherId, c.level); }));
+      const assignmentsByClass = await Promise.all(classes.map((c) => window.SchoolOS.api(`/classes/${c.id}/teacher-subject-assignments`).catch(() => [])));
+      classes.forEach((c, i) => assignmentsByClass[i].forEach((a) => addLevel(a.staffProfileId, c.level)));
+      lastTeacherLevelsById = Object.fromEntries(Object.entries(levelsById).map(([k, v]) => [k, [...v]]));
+
+      renderTeachersTable();
     } catch (err) { tbody.innerHTML = `<tr><td colspan="5">Could not load teachers (${err.message})</td></tr>`; }
   }
+  function renderTeachersTable() {
+    const tbody = document.getElementById('realTeachersBody');
+    if (!tbody) return;
+    const filterSelect = document.getElementById('teachersLevelFilter');
+    const level = filterSelect ? filterSelect.value : '';
+    const teachers = level ? lastLoadedTeachers.filter((s) => (lastTeacherLevelsById[s.id] || []).includes(level)) : lastLoadedTeachers;
+    tbody.innerHTML = teachers.length ? teachers.map((s) => `<tr><td><div class="person-cell"><span class="mini-avatar">${window.SchoolOS.initialsOf(s.user.firstName + ' ' + s.user.lastName)}</span>${s.user.firstName} ${s.user.lastName}</div></td><td>${s.staffId}</td><td>${s.department || '—'}</td><td>${s.user.email}</td><td class="row-action"><button class="outline-button" data-view-teacher="${s.id}">View</button></td></tr>`).join('') : `<tr><td colspan="5">No teachers${level ? ' at this level' : ''} yet.</td></tr>`;
+  }
   async function openTeacherDetailModal(staffProfileId) {
-    let t;
-    try { t = await window.SchoolOS.api('/staff-profiles/' + staffProfileId); } catch (err) { window.SchoolOS.toast(`Could not load teacher (${err.message})`); return; }
+    let t, subjects = [], classes = [];
+    try {
+      [t, subjects, classes] = await Promise.all([
+        window.SchoolOS.api('/staff-profiles/' + staffProfileId),
+        window.SchoolOS.api('/subjects'),
+        window.SchoolOS.api('/classes'),
+      ]);
+    } catch (err) { window.SchoolOS.toast(`Could not load teacher (${err.message})`); return; }
     const user = window.SchoolOS.getUser();
     const canManage = user && (user.role === 'PROPRIETOR' || user.role === 'PRINCIPAL');
     const ledHtml = (t.classArmsLed || []).map((a) => `<div class="modal-detail-row"><span>${a.name}</span><strong>${a.schoolClass.name}</strong></div>`).join('') || '<p class="modal-sub" style="margin:0">Not a class teacher for any arm.</p>';
-    const taughtHtml = (t.teacherAssignments || []).map((a) => `<div class="modal-detail-row"><span>${a.subject.name}</span><strong>${a.schoolClass.name}</strong></div>`).join('') || '<p class="modal-sub" style="margin:0">No subjects assigned yet.</p>';
+    const taughtHtml = (t.teacherAssignments || []).map((a) => `<div class="modal-detail-row"><span>${a.subject.name}</span><strong>${a.schoolClass.name}</strong>${canManage ? ` <button type="button" class="outline-button" data-remove-assignment="${a.id}" data-subject-name="${a.subject.name}" data-class-name="${a.schoolClass.name}" data-teacher-name="${t.user.firstName} ${t.user.lastName}">Remove</button>` : ''}</div>`).join('') || '<p class="modal-sub" style="margin:0">No subjects assigned yet.</p>';
+
+    const subjectByName = Object.fromEntries(subjects.map((sj) => [sj.name, sj.id]));
+    const classByName = Object.fromEntries(classes.map((c) => [c.name, c.id]));
+
     window.__renameTeacherSubmit = async (e) => {
       e.preventDefault();
       const data = new FormData(e.target);
       try {
         await window.SchoolOS.api('/staff-profiles/' + staffProfileId, { method: 'PATCH', body: JSON.stringify({ firstName: data.get('firstName'), lastName: data.get('lastName'), department: data.get('department'), position: data.get('position') }) });
-        window.SchoolOS.toast('Teacher updated'); loadRealTeachers(); openTeacherDetailModal(staffProfileId);
+        window.SchoolOS.toast('Teacher updated'); loadRealTeachers(); window.SchoolOS.closeModal();
       } catch (err) { window.SchoolOS.toast(`Could not update teacher (${err.message})`); }
+    };
+    window.__addAssignmentSubmit = async (e) => {
+      e.preventDefault();
+      const data = new FormData(e.target);
+      const subjectId = subjectByName[data.get('subject')];
+      const schoolClassId = classByName[data.get('cls')];
+      if (!subjectId || !schoolClassId) { window.SchoolOS.toast('Choose a subject and a class'); return; }
+      try {
+        await window.SchoolOS.api('/teacher-subject-assignments', { method: 'POST', body: JSON.stringify({ staffProfileId, schoolClassId, subjectId }) });
+        window.SchoolOS.toast('Subject assignment added'); loadRealTeachers(); window.SchoolOS.closeModal();
+      } catch (err) { window.SchoolOS.toast(`Could not add assignment (${err.message})`); }
     };
     window.SchoolOS.openModal(`<p class="eyebrow">Teachers</p><h2>Teacher details</h2>
       ${canManage ? `<form onsubmit="__renameTeacherSubmit(event)">
@@ -113,9 +185,19 @@
       </form>` : `<p class="modal-sub">${t.user.firstName} ${t.user.lastName} · ${t.department || '—'} · ${t.position || '—'}</p>`}
       <div class="modal-detail-row"><span>Staff ID</span><strong>${t.staffId}</strong></div>
       <div class="modal-detail-row"><span>Login email</span><strong>${t.user.email}</strong></div>
-      <div class="detail-section"><p class="eyebrow">Class teacher (homeroom) for</p>${ledHtml}</div>
-      <div class="detail-section"><p class="eyebrow">Subjects taught</p>${taughtHtml}</div>
+      <div class="detail-section"><p class="eyebrow">Class teacher (homeroom) for</p>${ledHtml}<p class="modal-sub" style="margin:8px 0 0">Change this from Academics → Classes → the class in question.</p></div>
+      <div class="detail-section"><p class="eyebrow">Subjects taught</p>${taughtHtml}
+        ${canManage ? `<form class="inline-edit-row" style="margin-top:10px" onsubmit="__addAssignmentSubmit(event)"><select name="subject" aria-label="Subject to add">${subjects.map((sj) => `<option>${sj.name}</option>`).join('')}</select><select name="cls" aria-label="Class to add">${classes.map((c) => `<option>${c.name}</option>`).join('')}</select><button type="submit" class="outline-button">+ Add</button></form>` : ''}
+      </div>
       <div class="form-actions"><button class="outline-button" data-modal-close>Close</button></div>`);
+  }
+  async function removeTeacherAssignment(assignmentId) {
+    try {
+      await window.SchoolOS.api('/teacher-subject-assignments/' + assignmentId, { method: 'DELETE' });
+      window.SchoolOS.toast('Subject assignment removed');
+      loadRealTeachers();
+      window.SchoolOS.closeModal();
+    } catch (err) { window.SchoolOS.toast(`Could not remove assignment (${err.message})`); }
   }
 
   // ============ My Classes (real, teacher) ============
@@ -125,7 +207,7 @@
   // covers (what Attendance/Assignments/Results already restrict them
   // to). Teachers only ever had a generic mock page here before.
   function pageMyClassesTeacher(label) {
-    return `<section class="page workspace-page" id="my-classes"><div class="page-heading"><div><p class="eyebrow">Live from the API</p><h1>${label}</h1><p class="subtitle">The subjects and classes you're assigned to teach.</p></div></div><section class="data-card"><div class="data-toolbar"><span class="tt-class-label">Subjects you teach</span></div><table class="data-table"><thead><tr><th>Subject</th><th>Class</th></tr></thead><tbody id="realMyClassesSubjectsBody"><tr><td colspan="2">Loading…</td></tr></tbody></table></section><section class="data-card" style="margin-top:14px"><div class="data-toolbar"><span class="tt-class-label">Class arms in your scope</span></div><table class="data-table"><thead><tr><th>Class</th><th>Arm</th></tr></thead><tbody id="realMyClassesArmsBody"><tr><td colspan="2">Loading…</td></tr></tbody></table></section></section>`;
+    return `<section class="page workspace-page" id="my-classes"><div class="page-heading"><div><p class="eyebrow">Teaching</p><h1>${label}</h1><p class="subtitle">The subjects and classes you're assigned to teach.</p></div></div><section class="data-card"><div class="data-toolbar"><span class="tt-class-label">Subjects you teach</span></div><table class="data-table"><thead><tr><th>Subject</th><th>Class</th></tr></thead><tbody id="realMyClassesSubjectsBody"><tr><td colspan="2">Loading…</td></tr></tbody></table></section><section class="data-card" style="margin-top:14px"><div class="data-toolbar"><span class="tt-class-label">Class arms in your scope</span></div><table class="data-table"><thead><tr><th>Class</th><th>Arm</th></tr></thead><tbody id="realMyClassesArmsBody"><tr><td colspan="2">Loading…</td></tr></tbody></table></section></section>`;
   }
   async function loadRealMyClasses() {
     const subjectsBody = document.getElementById('realMyClassesSubjectsBody');
@@ -148,55 +230,188 @@
   }
 
   // ============ Academics (timetable / marks / results / grading / classes / subjects) ============
-  const timetableDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-  const timetablePeriods = ['P1 · 8:00', 'P2 · 8:45', 'P3 · 9:30', 'P4 · 10:35', 'P5 · 11:20', 'P6 · 12:05'];
-  const classTimetables = {
-    'JSS 2A': [['Mathematics · Dada', 'English · James', 'Basic Science · Eze', 'Mathematics · Dada', 'Civic Ed · Okoro'], ['English · James', 'Mathematics · Dada', 'Social Studies · Bello', 'Basic Science · Eze', 'English · James'], ['Basic Science · Eze', 'Basic Science · Eze', 'Mathematics · Dada', 'Social Studies · Bello', 'Mathematics · Dada'], ['— Break —', '— Break —', '— Break —', '— Break —', '— Break —'], ['Social Studies · Bello', 'Civic Ed · Okoro', 'English · James', 'Mathematics · Dada', 'Basic Science · Eze'], ['French · Diallo', 'French · Diallo', 'Civic Ed · Okoro', 'French · Diallo', 'Mathematics · Dada']],
-    'JSS 2B': [['English · James', 'Mathematics · Dada', 'Civic Ed · Okoro', 'Basic Science · Eze', 'Mathematics · Dada'], ['Mathematics · Dada', 'Basic Science · Eze', 'English · James', 'Social Studies · Bello', 'English · James'], ['Social Studies · Bello', 'English · James', 'Mathematics · Dada', 'Basic Science · Eze', 'French · Diallo'], ['— Break —', '— Break —', '— Break —', '— Break —', '— Break —'], ['Basic Science · Eze', 'Civic Ed · Okoro', 'French · Diallo', 'Mathematics · Dada', 'Social Studies · Bello'], ['French · Diallo', 'Social Studies · Bello', 'Civic Ed · Okoro', 'English · James', 'Basic Science · Eze']],
-    'SS 1A': [['Physics · Nwachukwu', 'Chemistry · Adio', 'Biology · Falana', 'Mathematics · Dada', 'English · James'], ['Mathematics · Dada', 'Physics · Nwachukwu', 'English · James', 'Chemistry · Adio', 'Biology · Falana'], ['Chemistry · Adio', 'Biology · Falana', 'Mathematics · Dada', 'Physics · Nwachukwu', 'Government · Bello'], ['— Break —', '— Break —', '— Break —', '— Break —', '— Break —'], ['Biology · Falana', 'Government · Bello', 'Physics · Nwachukwu', 'English · James', 'Chemistry · Adio'], ['English · James', 'Government · Bello', 'Chemistry · Adio', 'Biology · Falana', 'Mathematics · Dada']],
-  };
-  const timetableConflicts = { 'JSS 2A': { row: 5, col: 4, note: 'Mrs. Dada is also teaching JSS 2B at this time' } };
-  let currentTimetableClass = 'JSS 2A';
-  const teacherClassMap = { 'Tunde Bello': { cls: 'JSS 2A', subject: 'Mathematics' } };
-  function openEditTimetableCellModal(r, c) {
-    const grid = classTimetables[currentTimetableClass];
-    const current = grid[r][c];
-    const parts = current.includes('·') ? current.split(' · ') : ['', ''];
+  // Timetable is real, generated data (POST /timetable/generate runs a
+  // conflict-free scheduler server-side) — no client-side mock state here.
+  // `timetableSelectedArm` tracks the picked class-arm per rendering
+  // context (the Academics-tab picker and the standalone Timetable tab can
+  // both be in the DOM at once for PRINCIPAL, so each needs its own scope).
+  const timetableSelectedArm = {};
+
+  /** Periods and admin-configured breaks (Timetable Settings) are
+   * interleaved by clock time, not shown as fixed trailing rows — a break
+   * can fall anywhere in the day now, not just at the end. A Nursery
+   * arm's `data.periods` is only as long as its own subject count (see
+   * TimetableService.generate), so its grid simply has fewer period rows
+   * than a Junior/Senior one — the same table markup handles both. */
+  function timetableGridHtml(data, cellFn) {
+    if (!data) return '<p class="modal-sub">Loading…</p>';
+    const byKey = {};
+    (data.slots || []).forEach((s) => { byKey[`${s.dayOfWeek}-${s.periodIndex}`] = s; });
+    const rows = [
+      ...(data.periods || []).map((p) => ({ sortKey: p.startTime, kind: 'period', p })),
+      ...(data.breaks || []).map((b) => ({ sortKey: b.startTime, kind: 'break', b })),
+    ].sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+    const rowsHtml = rows.map((r) => {
+      if (r.kind === 'break') {
+        return `<tr><td class="tt-period">${r.b.startTime}–${r.b.endTime}</td>${data.days.map(() => `<td class="tt-break">${r.b.label}</td>`).join('')}</tr>`;
+      }
+      const p = r.p;
+      const cells = data.days.map((d) => {
+        const s = byKey[`${d.value}-${p.index}`];
+        return `<td>${s ? cellFn(s) : '<span class="tt-empty">Free</span>'}</td>`;
+      }).join('');
+      return `<tr><td class="tt-period">P${p.index + 1} · ${p.startTime}</td>${cells}</tr>`;
+    }).join('');
+    return `<table class="data-table timetable-grid"><thead><tr><th></th>${data.days.map((d) => `<th>${d.label.slice(0, 3)}</th>`).join('')}</tr></thead><tbody>${rowsHtml}</tbody></table>`;
+  }
+  const classArmCellFn = (s) => `${s.subjectName}<br><small>${s.teacherName}</small>`;
+  const teacherCellFn = (s) => `${s.subjectName}<br><small>${s.className} · ${s.armName}</small>`;
+
+  async function loadTimetableGridByFetch(containerId, apiPath, cellFn) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    el.innerHTML = '<p class="modal-sub">Loading…</p>';
+    try { el.innerHTML = timetableGridHtml(await window.SchoolOS.api(apiPath), cellFn); } catch (err) { el.innerHTML = `<p class="modal-sub">Could not load timetable (${err.message})</p>`; }
+  }
+
+  /** Renders the class-arm picker + generate button + grid used by both
+   * the Academics tab's Timetable panel (scope 'academics') and
+   * PRINCIPAL's standalone Timetable tab (scope 'ttStandalone'). */
+  async function renderAdminTimetableSection(scope) {
+    const container = document.getElementById(`${scope}TimetableContainer`);
+    if (!container || !window.SchoolOS.getAccessToken()) return;
+    container.innerHTML = '<p class="modal-sub">Loading…</p>';
+    let arms = [];
+    try {
+      const classes = await window.SchoolOS.api('/classes');
+      arms = classes.flatMap((c) => (c.arms || []).map((a) => ({ id: a.id, label: `${c.name} · ${a.name}` })));
+    } catch (err) { container.innerHTML = `<p class="modal-sub">Could not load classes (${err.message})</p>`; return; }
+    if (!arms.length) { container.innerHTML = '<p class="modal-sub">No classes yet — add a class and arm first.</p>'; return; }
+    if (!timetableSelectedArm[scope] || !arms.some((a) => a.id === timetableSelectedArm[scope])) timetableSelectedArm[scope] = arms[0].id;
+    const canManage = currentRole === 'proprietor' || currentRole === 'principal';
+    container.innerHTML = `<div class="data-toolbar"><select data-timetable-arm-select="${scope}" aria-label="Select class timetable">${arms.map((a) => `<option value="${a.id}" ${a.id === timetableSelectedArm[scope] ? 'selected' : ''}>${a.label}</option>`).join('')}</select>${canManage ? `<button class="outline-button" data-open-timetable-settings>Break times…</button><button class="new-button" data-generate-timetable="${scope}">Generate timetable</button>` : ''}</div><div id="${scope}TimetableGrid"></div>`;
+    await loadTimetableGridByFetch(`${scope}TimetableGrid`, `/timetable/class-arm/${timetableSelectedArm[scope]}`, classArmCellFn);
+  }
+
+  /** Admin sets the day's break windows (and, if needed, its start/end)
+   * BEFORE generating — Generate always rebuilds from whatever's saved
+   * here at that moment (TimetableService.generate reads settings fresh
+   * every time). Periods are always 30 minutes each; that's not
+   * configurable, only where the breaks fall within the day is. */
+  let timetableBreaksDraft = [];
+  async function openTimetableSettingsModal() {
+    let settings;
+    try { settings = await window.SchoolOS.api('/timetable/settings'); } catch (err) { window.SchoolOS.toast(`Could not load timetable settings (${err.message})`); return; }
+    timetableBreaksDraft = (settings.breaks || []).map((b) => ({ label: b.label, startTime: b.startTime, endTime: b.endTime }));
+
+    const render = () => {
+      window.SchoolOS.openModal(`<p class="eyebrow">Timetable</p><h2>Break times</h2>
+        <p class="modal-sub">Every period is 30 minutes. Set the school day's start/end and its break windows here before generating — the generator skips over these rather than scheduling a class across them.</p>
+        <div class="inline-edit-row"><div class="form-field"><label>Day starts</label><input type="time" id="ttDayStart" value="${settings.dayStartTime}"></div><div class="form-field"><label>Day ends</label><input type="time" id="ttDayEnd" value="${settings.dayEndTime}"></div></div>
+        <div class="detail-section"><p class="eyebrow">Breaks</p><div id="ttBreaksList">${breaksListHtml()}</div><button type="button" class="outline-button" id="ttAddBreakBtn">+ Add break</button></div>
+        <div class="form-actions"><button type="button" class="outline-button" data-modal-close>Cancel</button><button type="button" class="new-button" id="ttSaveSettingsBtn">Save</button></div>`);
+      document.getElementById('ttAddBreakBtn').addEventListener('click', () => {
+        timetableBreaksDraft.push({ label: '', startTime: '', endTime: '' });
+        document.getElementById('ttBreaksList').innerHTML = breaksListHtml();
+        wireBreakRows();
+      });
+      wireBreakRows();
+      document.getElementById('ttSaveSettingsBtn').addEventListener('click', saveTimetableSettings);
+    };
+    const breaksListHtml = () => timetableBreaksDraft.length
+      ? timetableBreaksDraft.map((b, i) => `<div class="inline-edit-row" data-break-row="${i}"><input placeholder="Label (e.g. Short break)" value="${b.label}" data-break-field="label" data-break-index="${i}"><input type="time" value="${b.startTime}" data-break-field="startTime" data-break-index="${i}"><input type="time" value="${b.endTime}" data-break-field="endTime" data-break-index="${i}"><button type="button" class="outline-button" data-remove-break="${i}">✕</button></div>`).join('')
+      : '<p class="modal-sub" style="margin:0">No breaks configured yet.</p>';
+    const wireBreakRows = () => {
+      document.querySelectorAll('[data-break-field]').forEach((el) => {
+        el.addEventListener('input', () => { timetableBreaksDraft[Number(el.dataset.breakIndex)][el.dataset.breakField] = el.value; });
+      });
+      document.querySelectorAll('[data-remove-break]').forEach((el) => {
+        el.addEventListener('click', () => {
+          timetableBreaksDraft.splice(Number(el.dataset.removeBreak), 1);
+          document.getElementById('ttBreaksList').innerHTML = breaksListHtml();
+          wireBreakRows();
+        });
+      });
+    };
+    async function saveTimetableSettings() {
+      const dayStartTime = document.getElementById('ttDayStart').value;
+      const dayEndTime = document.getElementById('ttDayEnd').value;
+      if (!dayStartTime || !dayEndTime) { window.SchoolOS.toast('Day start and end times are required'); return; }
+      const breaks = timetableBreaksDraft.filter((b) => b.label && b.startTime && b.endTime);
+      if (breaks.length !== timetableBreaksDraft.length) { window.SchoolOS.toast('Every break needs a label, start and end time'); return; }
+      try {
+        await window.SchoolOS.api('/timetable/settings', { method: 'PUT', body: JSON.stringify({ dayStartTime, dayEndTime, breaks }) });
+        window.SchoolOS.toast('Timetable settings saved — regenerate the timetable to apply them');
+        window.SchoolOS.closeModal();
+      } catch (err) { window.SchoolOS.toast(`Could not save settings (${err.message})`); }
+    }
+    render();
+  }
+
+  async function generateTimetableAndReload() {
+    window.SchoolOS.toast('Generating timetable…');
+    let result;
+    try { result = await window.SchoolOS.api('/timetable/generate', { method: 'POST' }); } catch (err) { window.SchoolOS.toast(`Could not generate timetable (${err.message})`); return; }
+    if (result.armsWithConflicts.length) console.warn('Timetable — classes that could not be scheduled without a conflict:', result.armsWithConflicts);
+    if (result.armsSkipped.length) console.info('Timetable — classes skipped (no subject teachers assigned yet):', result.armsSkipped);
+    const conflictNote = result.armsWithConflicts.length ? ` — ${result.armsWithConflicts.length} class(es) couldn't be scheduled without a clash (see browser console)` : '';
+    window.SchoolOS.toast(`Timetable generated — ${result.slotsCreated} periods scheduled${conflictNote}`);
+    ['academics', 'ttStandalone'].forEach((scope) => { if (document.getElementById(`${scope}TimetableContainer`)) renderAdminTimetableSection(scope); });
+  }
+  // Grading scale is real, proprietor-managed data — a result's grade is
+  // computed automatically against these bands when the teacher enters
+  // scores (ResultsService.create), never typed in by hand.
+  async function loadGradingScale() {
+    const tbody = document.getElementById('realGradingScaleBody');
+    if (!tbody || !window.SchoolOS.getAccessToken()) return;
+    tbody.innerHTML = '<tr><td colspan="4">Loading…</td></tr>';
+    try {
+      const bands = await window.SchoolOS.api('/grading-scale');
+      const canManage = currentRole === 'proprietor';
+      tbody.innerHTML = bands.length
+        ? bands.map((b) => `<tr><td><strong>${b.grade}</strong></td><td>${b.minScore}–${b.maxScore}</td><td>${b.meaning || '—'}</td><td class="row-action">${canManage ? `<button class="outline-button" data-edit-grade-band="${b.id}" data-grade="${b.grade}" data-min="${b.minScore}" data-max="${b.maxScore}" data-meaning="${b.meaning || ''}">Edit</button> <button class="outline-button" data-delete-grade-band="${b.id}" data-grade="${b.grade}">Delete</button>` : ''}</td></tr>`).join('')
+        : '<tr><td colspan="4">No grading scale set yet.</td></tr>';
+    } catch (err) { tbody.innerHTML = `<tr><td colspan="4">Could not load grading scale (${err.message})</td></tr>`; }
+  }
+  function openNewGradeBandModal() {
     window.SchoolOS.formModal({
-      eyebrow: currentTimetableClass, title: `${timetableDays[c]} · ${timetablePeriods[r]}`,
-      fields: [{ name: 'subject', label: 'Subject', value: parts[0].trim(), placeholder: 'e.g. Mathematics' }, { name: 'teacher', label: 'Teacher', value: (parts[1] || '').trim(), placeholder: 'e.g. Dada' }],
-      submitLabel: 'Save',
-      onSubmit: (d) => { grid[r][c] = d.subject ? `${d.subject} · ${d.teacher || 'TBC'}` : 'Free period'; renderAcademicsPanel(); window.SchoolOS.toast('Timetable updated'); },
+      eyebrow: 'Grading scale', title: 'Add grade', sub: 'New results are graded automatically against this scale as scores are entered.',
+      fields: [{ name: 'grade', label: 'Grade', placeholder: 'e.g. A' }, { name: 'min', label: 'Min score', type: 'number', placeholder: '70' }, { name: 'max', label: 'Max score', type: 'number', placeholder: '100' }, { name: 'meaning', label: 'Meaning (optional)', placeholder: 'e.g. Excellent' }],
+      submitLabel: 'Add grade',
+      onSubmit: async (d) => {
+        const grade = (d.grade || '').trim();
+        if (!grade || d.min === '' || d.max === '') { window.SchoolOS.toast('Grade, min and max score are required'); return; }
+        try {
+          await window.SchoolOS.api('/grading-scale', { method: 'POST', body: JSON.stringify({ grade, minScore: Number(d.min), maxScore: Number(d.max), meaning: d.meaning || undefined }) });
+          window.SchoolOS.toast(`${grade} added`); loadGradingScale();
+        } catch (err) { window.SchoolOS.toast(`Could not add grade (${err.message})`); }
+      },
     });
   }
-  function openNewTimetableModal() {
-    window.SchoolOS.formModal({
-      eyebrow: 'Timetable', title: 'New class timetable', sub: 'Creates a blank weekly grid you can fill in, period by period.',
-      fields: [{ name: 'cls', label: 'Class name', placeholder: 'e.g. SS 2A' }],
-      submitLabel: 'Create timetable',
-      onSubmit: (d) => { const cls = d.cls || 'New class'; classTimetables[cls] = Array.from({ length: 6 }, () => Array(5).fill('Free period')); currentTimetableClass = cls; renderAcademicsPanel(); window.SchoolOS.toast(`Timetable created · ${cls}`); },
-    });
-  }
-  function selectTimetableClass(cls) { if (classTimetables[cls]) { currentTimetableClass = cls; renderAcademicsPanel(); } }
-  const gradingScale = [['A', '70–100', 'Excellent'], ['B', '60–69', 'Very good'], ['C', '50–59', 'Good'], ['D', '45–49', 'Pass'], ['E', '40–44', 'Weak pass'], ['F', '0–39', 'Fail']];
-  function openEditGradeModal(grade) {
-    const g = gradingScale.find((x) => x[0] === grade); if (!g) return;
+  function openEditGradeBandModal(id, grade, min, max, meaning) {
     window.SchoolOS.formModal({
       eyebrow: 'Grading scale', title: `Edit grade ${grade}`,
-      fields: [{ name: 'range', label: 'Score range', value: g[1], placeholder: 'e.g. 70–100' }, { name: 'meaning', label: 'Meaning', value: g[2] }],
+      fields: [{ name: 'grade', label: 'Grade', value: grade }, { name: 'min', label: 'Min score', type: 'number', value: min }, { name: 'max', label: 'Max score', type: 'number', value: max }, { name: 'meaning', label: 'Meaning', value: meaning }],
       submitLabel: 'Save',
-      onSubmit: (d) => { g[1] = d.range || g[1]; g[2] = d.meaning || g[2]; renderAcademicsPanel(); window.SchoolOS.toast(`Grading scale updated · Grade ${grade}`); },
+      onSubmit: async (d) => {
+        try {
+          await window.SchoolOS.api('/grading-scale/' + id, { method: 'PATCH', body: JSON.stringify({ grade: d.grade || undefined, minScore: d.min !== '' ? Number(d.min) : undefined, maxScore: d.max !== '' ? Number(d.max) : undefined, meaning: d.meaning || undefined }) });
+          window.SchoolOS.toast('Grading scale updated'); loadGradingScale();
+        } catch (err) { window.SchoolOS.toast(`Could not update (${err.message})`); }
+      },
     });
   }
+  async function deleteGradeBand(id, grade) {
+    if (!window.confirm(`Delete grade ${grade} from the scale? Results already graded keep their grade — this only changes how new ones are graded.`)) return;
+    try { await window.SchoolOS.api('/grading-scale/' + id, { method: 'DELETE' }); window.SchoolOS.toast('Grade removed'); loadGradingScale(); } catch (err) { window.SchoolOS.toast(`Could not delete (${err.message})`); }
+  }
   function pageAcademics(label) {
-    const kpis = [['Classes live', '—', 'Live count', 'academicsClassesLiveKpi'], ['Timetable conflicts', 'Coming soon', 'Timetable data source not built yet', null], ['Marks entries flagged', 'Coming soon', 'No flagging logic built yet', null], ['Results awaiting approval', '—', 'Submitted, not yet approved', 'academicsResultsAwaitingKpi']];
-    const grid = classTimetables[currentTimetableClass];
-    const conflict = timetableConflicts[currentTimetableClass];
-    const ttRows = timetablePeriods.map((p, r) => `<tr><td class="tt-period">${p}</td>${timetableDays.map((d, c) => { const isConflict = conflict && conflict.row === r && conflict.col === c; const val = grid[r][c]; const isBreak = val.startsWith('—'); return `<td class="${isBreak ? 'tt-break' : 'tt-editable'} ${isConflict ? 'tt-conflict' : ''}" ${isConflict ? `title="Clash: ${conflict.note}"` : ''} ${isBreak ? '' : `data-edit-cell="${r},${c}"`}>${val}${isConflict ? ' ⚠' : ''}</td>`; }).join('')}</tr>`).join('');
+    const kpis = [['Classes live', '—', 'Live count', 'academicsClassesLiveKpi'], ['Timetable', 'Generate to view', 'Click Generate timetable below', null], ['Marks entries flagged', 'Coming soon', 'No flagging logic built yet', null], ['Results awaiting approval', '—', 'Submitted, not yet approved', 'academicsResultsAwaitingKpi']];
     const canManageClasses = currentRole === 'proprietor' || currentRole === 'principal';
     const addClassButton = canManageClasses ? '<button class="new-button" data-modal="new-class">+ Add class</button>' : '';
     const addSubjectButton = canManageClasses ? '<button class="new-button" data-modal="new-subject">+ Add subject</button>' : '';
-    return `<section class="page workspace-page" id="academics"><div class="page-heading"><div><p class="eyebrow">Academic management</p><h1>${label}</h1><p class="subtitle">Timetable, marks entry and result approval for every class.</p></div><button class="new-button" data-goto-tab="marks">+ Enter marks</button></div><div class="screen-kpis">${kpis.map((s, i) => `<article class="screen-kpi"><p>${s[0]}</p><strong${s[3] ? ` id="${s[3]}"` : ''}>${s[1]}</strong><small class="${i === 1 || i === 2 ? 'warn' : ''}">${s[2]}</small></article>`).join('')}</div><div class="screen-tabs" data-tabs><button class="active" data-tab="timetable">Timetable</button><button data-tab="marks">Marks entry</button><button data-tab="results">Result approval</button><button data-tab="scale">Grading scale</button><button data-tab="classes">Classes</button><button data-tab="subjects">Subjects</button></div><div data-tab-panel="timetable" class="tab-panel visible"><section class="data-card"><div class="data-toolbar"><span class="tt-class-label">${currentTimetableClass} · Third term</span><select id="timetableClassSelect" aria-label="Select class timetable">${Object.keys(classTimetables).map((c) => `<option ${c === currentTimetableClass ? 'selected' : ''}>${c}</option>`).join('')}</select><button class="new-button" data-modal="new-timetable">+ New class timetable</button></div><p class="tt-hint">Click any period to edit it.</p><table class="data-table timetable-grid"><thead><tr><th></th>${timetableDays.map((d) => `<th>${d}</th>`).join('')}</tr></thead><tbody>${ttRows}</tbody></table></section></div><div data-tab-panel="marks" class="tab-panel"><section class="data-card"><div class="data-toolbar"><span class="tt-class-label">Live from the API — drafts not yet submitted</span></div><table class="data-table"><thead><tr><th>Student</th><th>Subject</th><th>Term</th><th>CA</th><th>Exam</th><th>Total</th></tr></thead><tbody id="realMarksEntryBody"><tr><td colspan="6">Sign in to load marks…</td></tr></tbody></table></section></div><div data-tab-panel="results" class="tab-panel"><section class="data-card"><table class="data-table"><thead><tr><th>Student</th><th>Subject</th><th>Term</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody id="realResultApprovalsBody"><tr><td colspan="6">Sign in to load results…</td></tr></tbody></table></section></div><div data-tab-panel="scale" class="tab-panel"><section class="data-card"><table class="data-table"><thead><tr><th>Grade</th><th>Range</th><th>Meaning</th><th></th></tr></thead><tbody>${gradingScale.map((g) => `<tr><td><strong>${g[0]}</strong></td><td>${g[1]}</td><td>${g[2]}</td><td class="row-action"><button class="outline-button" data-edit-grade="${g[0]}">Edit</button></td></tr>`).join('')}</tbody></table></section></div><div data-tab-panel="classes" class="tab-panel"><section class="data-card"><div class="data-toolbar"><span class="tt-class-label">Live from the API</span>${addClassButton}</div><table class="data-table"><thead><tr><th>Class</th><th>Campus</th><th>Arms</th><th></th></tr></thead><tbody id="realClassesBody"><tr><td colspan="4">Sign in to load classes…</td></tr></tbody></table></section></div><div data-tab-panel="subjects" class="tab-panel"><section class="data-card"><div class="data-toolbar"><span class="tt-class-label">Live from the API</span>${addSubjectButton}</div><table class="data-table"><thead><tr><th>Subject</th><th>Code</th></tr></thead><tbody id="realSubjectsBody"><tr><td colspan="2">Sign in to load subjects…</td></tr></tbody></table></section></div></section>`;
+    const addGradeButton = currentRole === 'proprietor' ? '<button class="new-button" data-modal="new-grade-band">+ Add grade</button>' : '';
+    return `<section class="page workspace-page" id="academics"><div class="page-heading"><div><p class="eyebrow">Academic management</p><h1>${label}</h1><p class="subtitle">Timetable, marks entry and result approval for every class.</p></div><button class="new-button" data-goto-tab="marks">+ Enter marks</button></div><div class="screen-kpis">${kpis.map((s, i) => `<article class="screen-kpi"><p>${s[0]}</p><strong${s[3] ? ` id="${s[3]}"` : ''}>${s[1]}</strong><small class="${i === 1 || i === 2 ? 'warn' : ''}">${s[2]}</small></article>`).join('')}</div><div class="screen-tabs" data-tabs><button class="active" data-tab="timetable">Timetable</button><button data-tab="marks">Marks entry</button><button data-tab="results">Result approval</button><button data-tab="scale">Grading scale</button><button data-tab="classes">Classes</button><button data-tab="subjects">Subjects</button></div><div data-tab-panel="timetable" class="tab-panel visible"><section class="data-card"><p class="tt-hint">Generate builds a conflict-free weekly schedule for every class from the subject teachers already assigned — a teacher is never double-booked across classes.</p><div id="academicsTimetableContainer"><p class="modal-sub">Loading…</p></div></section></div><div data-tab-panel="marks" class="tab-panel"><section class="data-card"><div class="data-toolbar"><span class="tt-class-label">Drafts not yet submitted</span></div><table class="data-table"><thead><tr><th>Student</th><th>Subject</th><th>Term</th><th>CA</th><th>Exam</th><th>Total</th><th>Grade</th></tr></thead><tbody id="realMarksEntryBody"><tr><td colspan="7">Sign in to load marks…</td></tr></tbody></table></section></div><div data-tab-panel="results" class="tab-panel"><section class="data-card"><table class="data-table"><thead><tr><th>Student</th><th>Subject</th><th>Term</th><th>Total</th><th>Grade</th><th>Status</th><th></th></tr></thead><tbody id="realResultApprovalsBody"><tr><td colspan="7">Sign in to load results…</td></tr></tbody></table></section></div><div data-tab-panel="scale" class="tab-panel"><section class="data-card"><div class="data-toolbar"><span class="tt-class-label">Results are auto-graded against this scale</span>${addGradeButton}</div><table class="data-table"><thead><tr><th>Grade</th><th>Range</th><th>Meaning</th><th></th></tr></thead><tbody id="realGradingScaleBody"><tr><td colspan="4">Sign in to load the grading scale…</td></tr></tbody></table></section></div><div data-tab-panel="classes" class="tab-panel"><section class="data-card"><div class="data-toolbar"><span class="tt-class-label">Filter by level</span><select id="classesLevelFilter" class="level-filter-select" aria-label="Filter classes by level"><option value="">All levels</option>${Object.entries(LEVEL_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>${addClassButton}</div><table class="data-table"><thead><tr><th>Class</th><th>Level</th><th>Campus</th><th>Arms</th><th></th></tr></thead><tbody id="realClassesBody"><tr><td colspan="5">Sign in to load classes…</td></tr></tbody></table></section></div><div data-tab-panel="subjects" class="tab-panel"><section class="data-card"><div class="data-toolbar"><span class="tt-class-label">Filter by level</span><select id="subjectsLevelFilter" class="level-filter-select" aria-label="Filter subjects by level"><option value="">All levels</option>${Object.entries(LEVEL_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>${addSubjectButton}</div><table class="data-table"><thead><tr><th>Subject</th><th>Code</th><th>Levels</th><th>Stream</th></tr></thead><tbody id="realSubjectsBody"><tr><td colspan="4">Sign in to load subjects…</td></tr></tbody></table></section></div></section>`;
   }
   function renderAcademicsPanel() {
     const el = document.getElementById('academics');
@@ -205,91 +420,279 @@
     el.outerHTML = pageAcademics('Academics');
     if (wasVisible) document.getElementById('academics').classList.add('visible');
     bindTabs();
-    loadRealClasses(); loadRealSubjects(); loadRealAcademicsResults();
+    loadRealClasses(); loadRealSubjects(); loadRealAcademicsResults(); loadGradingScale(); renderAdminTimetableSection('academics');
   }
+  let lastLoadedClasses = [];
+  let lastCampusNameById = {};
   async function loadRealClasses() {
     const tbody = document.getElementById('realClassesBody');
     if (!tbody || !window.SchoolOS.getAccessToken()) return;
-    tbody.innerHTML = '<tr><td colspan="4">Loading classes…</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5">Loading classes…</td></tr>';
     try {
       const [classes, campuses] = await Promise.all([window.SchoolOS.api('/classes'), window.SchoolOS.api('/campuses')]);
-      const campusName = Object.fromEntries(campuses.map((c) => [c.id, c.name]));
-      tbody.innerHTML = classes.length ? classes.map((c) => `<tr><td>${c.name}</td><td>${campusName[c.campusId] || '—'}</td><td>${(c.arms || []).map((a) => a.name).join(', ') || '—'}</td><td class="row-action"><button class="outline-button" data-view-class="${c.id}">View</button></td></tr>`).join('') : '<tr><td colspan="4">No classes yet.</td></tr>';
-    } catch (err) { tbody.innerHTML = `<tr><td colspan="4">Could not load classes (${err.message})</td></tr>`; }
+      lastLoadedClasses = classes;
+      lastCampusNameById = Object.fromEntries(campuses.map((c) => [c.id, c.name]));
+      renderClassesTable();
+    } catch (err) { tbody.innerHTML = `<tr><td colspan="5">Could not load classes (${err.message})</td></tr>`; }
+  }
+  function renderClassesTable() {
+    const tbody = document.getElementById('realClassesBody');
+    if (!tbody) return;
+    const filterSelect = document.getElementById('classesLevelFilter');
+    const level = filterSelect ? filterSelect.value : '';
+    const classes = level ? lastLoadedClasses.filter((c) => c.level === level) : lastLoadedClasses;
+    tbody.innerHTML = classes.length ? classes.map((c) => `<tr><td>${c.name}</td><td>${LEVEL_LABELS[c.level] || c.level}</td><td>${lastCampusNameById[c.campusId] || '—'}</td><td>${(c.arms || []).map((a) => a.name).join(', ') || '—'}</td><td class="row-action"><button class="outline-button" data-view-class="${c.id}">View</button></td></tr>`).join('') : `<tr><td colspan="5">No classes${level ? ' at this level' : ''} yet.</td></tr>`;
   }
   async function openClassDetailModal(classId) {
-    let cls;
-    try { cls = await window.SchoolOS.api('/classes/' + classId); } catch (err) { window.SchoolOS.toast(`Could not load class (${err.message})`); return; }
+    let cls, staff = [], allClasses = [];
+    try {
+      [cls, staff, allClasses] = await Promise.all([
+        window.SchoolOS.api('/classes/' + classId),
+        window.SchoolOS.api('/staff-profiles'),
+        window.SchoolOS.api('/classes'),
+      ]);
+    } catch (err) { window.SchoolOS.toast(`Could not load class (${err.message})`); return; }
     const user = window.SchoolOS.getUser();
     const canManage = user && (user.role === 'PROPRIETOR' || user.role === 'PRINCIPAL');
+    // Same-campus teachers only — mirrors the campus rule enforced
+    // server-side (StaffProfilesService.createTeacher / ClassesService.updateArm).
+    const teachersAtCampus = staff.filter((s) => s.user && s.user.role === 'TEACHER' && s.campusId === cls.campusId);
+    const allTeachers = staff.filter((s) => s.user && s.user.role === 'TEACHER');
+    const isSeniorSecondaryClass = cls.level === 'SENIOR_SECONDARY';
     const armsHtml = (cls.arms || []).map((a) => {
       const teacherName = a.classTeacher ? `${a.classTeacher.user.firstName} ${a.classTeacher.user.lastName}` : 'Unassigned';
-      return canManage ? `<form class="inline-edit-row" onsubmit="__renameArmSubmit(event,'${a.id}')"><input name="name" value="${a.name}" aria-label="Arm name"><small>${teacherName}</small><button type="submit" class="outline-button">Save</button></form>` : `<div class="modal-detail-row"><span>${a.name}</span><strong>${teacherName}</strong></div>`;
+      const teacherControl = canManage
+        ? `<small>Class teacher (${a.name})</small><select data-set-class-teacher="${a.id}" data-arm-name="${a.name}" data-previous-value="${a.classTeacherId || ''}" aria-label="Class teacher for ${a.name}"><option value="">Unassigned</option>${teachersAtCampus.map((s) => `<option value="${s.id}" ${a.classTeacherId === s.id ? 'selected' : ''}>${s.user.firstName} ${s.user.lastName}</option>`).join('')}</select>`
+        : `<small>${teacherName}</small>`;
+      const streamControl = !isSeniorSecondaryClass ? '' : canManage
+        ? `<small>Stream (${a.name})</small><select id="armStreamSelect-${a.id}" aria-label="Stream for ${a.name}"><option value="">Not stream-specific</option>${Object.entries(STREAM_LABELS).map(([k, v]) => `<option value="${k}" ${a.stream === k ? 'selected' : ''}>${v}</option>`).join('')}</select><button type="button" class="outline-button" data-save-arm-stream="${a.id}" data-arm-class-id="${classId}">Save</button>`
+        : `<small>Stream: ${a.stream ? STREAM_LABELS[a.stream] : 'Not stream-specific'}</small>`;
+      const promoteBtn = canManage ? `<button type="button" class="outline-button" data-promote-arm="${a.id}" data-arm-label="${cls.name} · ${a.name}">Promote students…</button>` : '';
+      return canManage
+        ? `<form class="inline-edit-row" onsubmit="__renameArmSubmit(event,'${a.id}')"><input name="name" value="${a.name}" aria-label="Arm name"><button type="submit" class="outline-button">Save</button></form><div class="inline-edit-row">${teacherControl}</div>${streamControl ? `<div class="inline-edit-row">${streamControl}</div>` : ''}<div class="inline-edit-row">${promoteBtn}</div>`
+        : `<div class="modal-detail-row"><span>${a.name}</span><strong>${teacherName}</strong></div>${isSeniorSecondaryClass ? `<div class="modal-detail-row"><span></span>${streamControl}</div>` : ''}`;
     }).join('') || '<p class="modal-sub" style="margin:0">No arms yet.</p>';
-    const subjectsHtml = (cls.teacherAssignments || []).map((t) => `<div class="modal-detail-row"><span>${t.subject.name}</span><strong>${t.staffProfile.user.firstName} ${t.staffProfile.user.lastName}</strong></div>`).join('') || '<p class="modal-sub" style="margin:0">No subject teachers assigned yet.</p>';
+    const subjectsHtml = (cls.teacherAssignments || []).map((t) => {
+      const label = `${t.subject.name}`;
+      const control = canManage
+        ? `<select data-reassign-subject-teacher="${classId}" data-subject-id="${t.subject.id}" data-subject-name="${t.subject.name}" data-previous-value="${t.staffProfile.id}" aria-label="Teacher for ${t.subject.name}">${allTeachers.map((s) => `<option value="${s.id}" ${t.staffProfile.id === s.id ? 'selected' : ''}>${s.user.firstName} ${s.user.lastName}</option>`).join('')}</select>`
+        : `<strong>${t.staffProfile.user.firstName} ${t.staffProfile.user.lastName}</strong>`;
+      return `<div class="modal-detail-row"><span>${label}</span>${control}</div>`;
+    }).join('') || '<p class="modal-sub" style="margin:0">No subject teachers assigned yet.</p>';
+
+    const otherClasses = allClasses.filter((c) => c.id !== classId);
+    const promotesToHtml = canManage ? `<div class="inline-edit-row"><select id="promotesToSelect" aria-label="Promotes to"><option value="">— None (students graduate) —</option>${otherClasses.map((c) => `<option value="${c.id}" ${cls.promotesToClassId === c.id ? 'selected' : ''}>${c.name}</option>`).join('')}</select><button type="button" class="outline-button" data-save-promotes-to="${classId}">Save</button></div>` : `<p class="modal-sub" style="margin:0">${cls.promotesToClass ? cls.promotesToClass.name : 'None — this is the final class (students graduate).'}</p>`;
+    const levelHtml = canManage ? `<div class="inline-edit-row"><select id="levelSelect" aria-label="Level">${Object.entries(LEVEL_LABELS).map(([k, v]) => `<option value="${k}" ${cls.level === k ? 'selected' : ''}>${v}</option>`).join('')}</select><button type="button" class="outline-button" data-save-level="${classId}">Save</button></div>` : `<p class="modal-sub" style="margin:0">${LEVEL_LABELS[cls.level] || cls.level}</p>`;
+
     window.__renameClassSubmit = async (e) => {
       e.preventDefault();
       const name = new FormData(e.target).get('name');
-      try { await window.SchoolOS.api('/classes/' + classId, { method: 'PATCH', body: JSON.stringify({ name }) }); window.SchoolOS.toast('Class renamed'); loadRealClasses(); openClassDetailModal(classId); } catch (err) { window.SchoolOS.toast(`Could not rename class (${err.message})`); }
+      try { await window.SchoolOS.api('/classes/' + classId, { method: 'PATCH', body: JSON.stringify({ name }) }); window.SchoolOS.toast('Class renamed'); loadRealClasses(); window.SchoolOS.closeModal(); } catch (err) { window.SchoolOS.toast(`Could not rename class (${err.message})`); }
     };
     window.__renameArmSubmit = async (e, armId) => {
       e.preventDefault();
       const name = new FormData(e.target).get('name');
-      try { await window.SchoolOS.api('/class-arms/' + armId, { method: 'PATCH', body: JSON.stringify({ name }) }); window.SchoolOS.toast('Arm renamed'); loadRealClasses(); openClassDetailModal(classId); } catch (err) { window.SchoolOS.toast(`Could not rename arm (${err.message})`); }
+      try { await window.SchoolOS.api('/class-arms/' + armId, { method: 'PATCH', body: JSON.stringify({ name }) }); window.SchoolOS.toast('Arm renamed'); loadRealClasses(); window.SchoolOS.closeModal(); } catch (err) { window.SchoolOS.toast(`Could not rename arm (${err.message})`); }
     };
     window.SchoolOS.openModal(`<p class="eyebrow">Academics</p><h2>Class details</h2>
       ${canManage ? `<form class="inline-edit-row" onsubmit="__renameClassSubmit(event)"><input name="name" value="${cls.name}" aria-label="Class name"><button type="submit" class="outline-button">Save</button></form>` : `<p class="modal-sub">${cls.name}</p>`}
+      <div class="detail-section"><p class="eyebrow">Level</p>${levelHtml}</div>
+      <div class="detail-section"><p class="eyebrow">Promotes to (next class, end of session)</p>${promotesToHtml}</div>
       <div class="detail-section"><p class="eyebrow">Arms</p>${armsHtml}${canManage ? `<button class="outline-button" style="margin-top:10px" data-add-arm="${classId}">+ Add arm</button>` : ''}</div>
       <div class="detail-section"><p class="eyebrow">Subject teachers</p>${subjectsHtml}</div>
       <div class="form-actions"><button class="outline-button" data-modal-close>Close</button></div>`);
   }
+  async function saveArmStream(armId, classId) {
+    const select = document.getElementById('armStreamSelect-' + armId);
+    const payload = select.value ? { stream: select.value } : { clearStream: true };
+    try {
+      await window.SchoolOS.api('/class-arms/' + armId, { method: 'PATCH', body: JSON.stringify(payload) });
+      window.SchoolOS.toast('Arm stream updated');
+      loadRealClasses();
+      if (classId) openClassDetailModal(classId);
+    } catch (err) { window.SchoolOS.toast(`Could not update arm stream (${err.message})`); }
+  }
+  async function saveClassLevel(classId) {
+    const select = document.getElementById('levelSelect');
+    try { await window.SchoolOS.api('/classes/' + classId, { method: 'PATCH', body: JSON.stringify({ level: select.value }) }); window.SchoolOS.toast('Level updated'); loadRealClasses(); openClassDetailModal(classId); } catch (err) { window.SchoolOS.toast(`Could not update level (${err.message})`); }
+  }
+  async function saveClassPromotesTo(classId) {
+    const select = document.getElementById('promotesToSelect');
+    const payload = select.value ? { promotesToClassId: select.value } : { clearPromotesTo: true };
+    try { await window.SchoolOS.api('/classes/' + classId, { method: 'PATCH', body: JSON.stringify(payload) }); window.SchoolOS.toast('Promotion target updated'); openClassDetailModal(classId); } catch (err) { window.SchoolOS.toast(`Could not update promotion target (${err.message})`); }
+  }
+  async function reassignSubjectTeacher(schoolClassId, subjectId, staffProfileId) {
+    try {
+      await window.SchoolOS.api('/teacher-subject-assignments/reassign', { method: 'POST', body: JSON.stringify({ schoolClassId, subjectId, staffProfileId }) });
+      window.SchoolOS.toast('Subject teacher reassigned');
+      openClassDetailModal(schoolClassId);
+    } catch (err) { window.SchoolOS.toast(`Could not reassign (${err.message})`); }
+  }
+
+  /** End-of-session bulk promotion — the backend only allows this during
+   * Third Term (AcademicSessionsService.assertCurrentTermIsThird), so a
+   * mistimed attempt surfaces as a normal toast error here rather than
+   * needing its own separate "is it Third Term" check client-side. Every
+   * student defaults to the class's configured "promotes to" target (or
+   * Graduate, for a terminal class) but stays individually editable —
+   * "Repeat this class" is always available so a student can be held
+   * back without being sent anywhere. */
+  async function openPromotionModal(classArmId, armLabel) {
+    let sessions, preview;
+    try {
+      sessions = await window.SchoolOS.api('/academic-sessions');
+    } catch (err) { window.SchoolOS.toast(`Could not load academic sessions (${err.message})`); return; }
+    const currentSession = sessions.find((s) => s.isCurrent) || sessions[0];
+    if (!currentSession) { window.SchoolOS.toast('No academic session found'); return; }
+
+    try {
+      preview = await window.SchoolOS.api(`/students/promotion-preview?classArmId=${classArmId}&targetAcademicSessionId=${currentSession.id}`);
+    } catch (err) { window.SchoolOS.toast(`Could not start promotion (${err.message})`); return; }
+
+    if (!preview.students.length) { window.SchoolOS.toast('No active students in this class to promote'); return; }
+
+    const rowHtml = (s) => {
+      const options = preview.isGraduating
+        ? [{ value: '__graduate__', label: 'Graduate', selected: true }, { value: '__repeat__', label: 'Repeat this class', selected: false }]
+        : [
+            { value: '__repeat__', label: 'Repeat this class', selected: !s.defaultTargetClassArmId },
+            ...preview.targetArms.map((a) => ({ value: a.id, label: `${preview.targetClass.name} · ${a.name}`, selected: s.defaultTargetClassArmId === a.id })),
+          ];
+      const optionsHtml = options.map((o) => `<option value="${o.value}" ${o.selected ? 'selected' : ''}>${o.label}</option>`).join('');
+      return `<div class="attendance-row"><span class="person-cell">${s.firstName} ${s.lastName}</span><select data-promotion-target="${s.id}" aria-label="Outcome for ${s.firstName} ${s.lastName}">${optionsHtml}</select><span></span></div>`;
+    };
+    const sub = preview.isGraduating
+      ? `${preview.students.length} student(s) default to Graduate — ${armLabel} has no next class configured. Switch any to "Repeat this class" if they need to stay.`
+      : `${preview.students.length} student(s) default to moving into ${preview.targetClass.name}. Adjust individuals below (e.g. to hold a student back) before confirming.`;
+
+    window.SchoolOS.openModal(`<p class="eyebrow">Promotion</p><h2>Promote ${armLabel}</h2><p class="modal-sub">${sub}</p><div class="attendance-list">${preview.students.map(rowHtml).join('')}</div><div class="form-actions"><button class="outline-button" data-modal-close>Cancel</button><button class="new-button" id="confirmPromoteBtn">Confirm</button></div>`);
+
+    document.getElementById('confirmPromoteBtn').addEventListener('click', async () => {
+      const assignments = [];
+      let repeating = 0;
+      for (const s of preview.students) {
+        const value = document.querySelector(`[data-promotion-target="${s.id}"]`).value;
+        if (value === '__repeat__') { repeating += 1; continue; }
+        assignments.push(value === '__graduate__' ? { studentId: s.id } : { studentId: s.id, targetClassArmId: value });
+      }
+      const graduating = assignments.filter((a) => !a.targetClassArmId).length;
+      const moving = assignments.length - graduating;
+      const parts = [];
+      if (moving) parts.push(`promote ${moving} to ${preview.targetClass ? preview.targetClass.name : 'the next class'}`);
+      if (graduating) parts.push(`graduate ${graduating}`);
+      if (repeating) parts.push(`keep ${repeating} repeating ${armLabel}`);
+      if (!assignments.length) { window.SchoolOS.toast('Every student is set to repeat — nothing to confirm'); return; }
+      if (!window.confirm(`${parts.join(', ')}? This cannot be easily undone.`)) return;
+      try {
+        const res = await window.SchoolOS.api('/students/promote-bulk', { method: 'POST', body: JSON.stringify({ classArmId, targetAcademicSessionId: currentSession.id, assignments }) });
+        window.SchoolOS.toast(`Promoted ${res.promoted}, graduated ${res.graduated}`);
+        window.SchoolOS.closeModal();
+        loadRealClasses();
+      } catch (err) { window.SchoolOS.toast(`Could not promote (${err.message})`); }
+    });
+  }
+  /** Reassign/remove a class teacher after the fact — the create-teacher
+   * modal only covers assigning one at creation time; this is the other
+   * (and only other) place ClassArm.classTeacherId can change. */
+  async function setArmClassTeacher(armId, staffProfileId) {
+    const payload = staffProfileId ? { classTeacherId: staffProfileId } : { removeClassTeacher: true };
+    try {
+      await window.SchoolOS.api('/class-arms/' + armId, { method: 'PATCH', body: JSON.stringify(payload) });
+      window.SchoolOS.toast(staffProfileId ? 'Class teacher updated' : 'Class teacher removed');
+      loadRealClasses();
+      window.SchoolOS.closeModal();
+    } catch (err) { window.SchoolOS.toast(`Could not update class teacher (${err.message})`); }
+  }
+  const LEVEL_LABELS = { NURSERY: 'Nursery', PRIMARY: 'Primary', JUNIOR_SECONDARY: 'Junior Secondary', SENIOR_SECONDARY: 'Senior Secondary' };
+  const levelByLabel = Object.fromEntries(Object.entries(LEVEL_LABELS).map(([k, v]) => [v, k]));
+  const STREAM_LABELS = { SCIENCE: 'Science', ART: 'Art' };
+
   async function openNewClassModal() {
     let campuses = [];
     try { campuses = await window.SchoolOS.api('/campuses'); } catch (err) { window.SchoolOS.toast(`Could not load campuses (${err.message})`); return; }
     if (!campuses.length) { window.SchoolOS.toast('No campuses found for this tenant'); return; }
     const campusByName = Object.fromEntries(campuses.map((c) => [c.name, c.id]));
     window.SchoolOS.formModal({
-      eyebrow: 'Academics', title: 'Add class', sub: 'Creates a real class via the SchoolOS API — POST /classes.',
-      fields: [{ name: 'name', label: 'Class name', placeholder: 'e.g. JSS 3' }, { name: 'campus', label: 'Campus', type: 'select', options: campuses.map((c) => c.name) }],
+      eyebrow: 'Academics', title: 'Add class', sub: 'e.g. Nursery 1, Primary 3, JSS 2, SS1.',
+      fields: [
+        { name: 'name', label: 'Class name', placeholder: 'e.g. JSS 3' },
+        { name: 'level', label: 'Level', type: 'select', options: Object.values(LEVEL_LABELS) },
+        { name: 'campus', label: 'Campus', type: 'select', options: campuses.map((c) => c.name) },
+      ],
       submitLabel: 'Add class',
       onSubmit: async (d) => {
-        const payload = { campusId: campusByName[d.campus], name: (d.name || '').trim() };
+        const payload = { campusId: campusByName[d.campus], name: (d.name || '').trim(), level: levelByLabel[d.level] };
         if (!payload.name || !payload.campusId) { window.SchoolOS.toast('Class name and campus are required'); return; }
         try { await window.SchoolOS.api('/classes', { method: 'POST', body: JSON.stringify(payload) }); window.SchoolOS.toast(`${payload.name} added`); loadRealClasses(); } catch (err) { window.SchoolOS.toast(`Could not add class (${err.message})`); }
       },
     });
   }
   async function openNewClassArmModal(schoolClassId) {
-    let teachers = [];
-    try { const staff = await window.SchoolOS.api('/staff-profiles'); teachers = staff.filter((s) => s.user && s.user.role === 'TEACHER'); } catch (err) { window.SchoolOS.toast(`Could not load teachers (${err.message})`); return; }
+    let teachers = [], schoolClass;
+    try {
+      [teachers, schoolClass] = await Promise.all([
+        window.SchoolOS.api('/staff-profiles').then((staff) => staff.filter((s) => s.user && s.user.role === 'TEACHER')),
+        window.SchoolOS.api('/classes/' + schoolClassId),
+      ]);
+    } catch (err) { window.SchoolOS.toast(`Could not load teachers (${err.message})`); return; }
     const teacherLabel = (s) => `${s.user.firstName} ${s.user.lastName}`;
     const teacherByLabel = Object.fromEntries(teachers.map((s) => [teacherLabel(s), s.id]));
+    const isSeniorSecondary = schoolClass.level === 'SENIOR_SECONDARY';
     window.SchoolOS.formModal({
-      eyebrow: 'Academics', title: 'Add class arm', sub: 'Creates a real class arm (section) via the SchoolOS API — POST /class-arms.',
-      fields: [{ name: 'name', label: 'Arm name', placeholder: 'e.g. Gold' }, { name: 'teacher', label: 'Class teacher', type: 'select', options: ['Unassigned', ...teachers.map(teacherLabel)] }],
+      eyebrow: 'Academics', title: 'Add class arm', sub: 'A section of this class — e.g. "Gold" or "Diamond".',
+      fields: [
+        { name: 'name', label: 'Arm name', placeholder: 'e.g. Gold' },
+        { name: 'teacher', label: 'Class teacher', type: 'select', options: ['Unassigned', ...teachers.map(teacherLabel)] },
+        ...(isSeniorSecondary ? [{ name: 'stream', label: 'Stream (for Senior Secondary students in this arm)', type: 'select', options: ['Not stream-specific', ...Object.values(STREAM_LABELS)] }] : []),
+      ],
       submitLabel: 'Add arm',
       onSubmit: async (d) => {
-        const payload = { schoolClassId, name: (d.name || '').trim(), classTeacherId: d.teacher && d.teacher !== 'Unassigned' ? teacherByLabel[d.teacher] : undefined };
+        const payload = {
+          schoolClassId, name: (d.name || '').trim(),
+          classTeacherId: d.teacher && d.teacher !== 'Unassigned' ? teacherByLabel[d.teacher] : undefined,
+          stream: d.stream && d.stream !== 'Not stream-specific' ? Object.keys(STREAM_LABELS).find((k) => STREAM_LABELS[k] === d.stream) : undefined,
+        };
         if (!payload.name) { window.SchoolOS.toast('Arm name is required'); return; }
         try { await window.SchoolOS.api('/class-arms', { method: 'POST', body: JSON.stringify(payload) }); window.SchoolOS.toast(`${payload.name} added`); loadRealClasses(); } catch (err) { window.SchoolOS.toast(`Could not add class arm (${err.message})`); }
       },
     });
   }
+  let lastLoadedSubjects = [];
   async function loadRealSubjects() {
     const tbody = document.getElementById('realSubjectsBody');
     if (!tbody || !window.SchoolOS.getAccessToken()) return;
-    tbody.innerHTML = '<tr><td colspan="2">Loading subjects…</td></tr>';
-    try { const subjects = await window.SchoolOS.api('/subjects'); tbody.innerHTML = subjects.length ? subjects.map((s) => `<tr><td>${s.name}</td><td>${s.code || '—'}</td></tr>`).join('') : '<tr><td colspan="2">No subjects yet.</td></tr>'; } catch (err) { tbody.innerHTML = `<tr><td colspan="2">Could not load subjects (${err.message})</td></tr>`; }
+    tbody.innerHTML = '<tr><td colspan="3">Loading subjects…</td></tr>';
+    try {
+      lastLoadedSubjects = await window.SchoolOS.api('/subjects');
+      renderSubjectsTable();
+    } catch (err) { tbody.innerHTML = `<tr><td colspan="3">Could not load subjects (${err.message})</td></tr>`; }
+  }
+  function renderSubjectsTable() {
+    const tbody = document.getElementById('realSubjectsBody');
+    if (!tbody) return;
+    const filterSelect = document.getElementById('subjectsLevelFilter');
+    const level = filterSelect ? filterSelect.value : '';
+    const subjects = level ? lastLoadedSubjects.filter((s) => s.levels.includes(level)) : lastLoadedSubjects;
+    const streamsCell = (s) => s.streams && s.streams.length ? s.streams.map((st) => STREAM_LABELS[st] || st).join(', ') : 'All streams';
+    tbody.innerHTML = subjects.length ? subjects.map((s) => `<tr><td>${s.name}</td><td>${s.code || '—'}</td><td>${s.levels.length ? s.levels.map((l) => LEVEL_LABELS[l] || l).join(', ') : '—'}</td><td>${s.levels.includes('SENIOR_SECONDARY') ? streamsCell(s) : '—'}</td></tr>`).join('') : `<tr><td colspan="4">No subjects${level ? ' at this level' : ''} yet.</td></tr>`;
   }
   function openNewSubjectModal() {
     window.SchoolOS.formModal({
-      eyebrow: 'Academics', title: 'Add subject', sub: 'Creates a real subject via the SchoolOS API — POST /subjects.',
-      fields: [{ name: 'name', label: 'Subject name', placeholder: 'e.g. Further Mathematics' }, { name: 'code', label: 'Code (optional)', placeholder: 'e.g. FMTH' }],
+      eyebrow: 'Academics', title: 'Add subject', sub: 'Which level(s) is this taught at? For Senior Secondary, you can also restrict it to Science or Art (leave blank for both).',
+      fields: [
+        { name: 'name', label: 'Subject name', placeholder: 'e.g. Further Mathematics' },
+        { name: 'code', label: 'Code (optional)', placeholder: 'e.g. FMTH' },
+        { name: 'levels', label: 'Levels', type: 'checkboxes', options: Object.entries(LEVEL_LABELS).map(([k, v]) => ({ value: k, label: v })) },
+        { name: 'streams', label: 'Senior Secondary streams (optional)', type: 'checkboxes', options: Object.entries(STREAM_LABELS).map(([k, v]) => ({ value: k, label: v })) },
+      ],
       submitLabel: 'Add subject',
       onSubmit: async (d) => {
         const name = (d.name || '').trim();
+        const levels = [].concat(d.levels || []).filter(Boolean);
+        const streams = [].concat(d.streams || []).filter(Boolean);
         if (!name) { window.SchoolOS.toast('Subject name is required'); return; }
-        try { await window.SchoolOS.api('/subjects', { method: 'POST', body: JSON.stringify({ name, code: d.code || undefined }) }); window.SchoolOS.toast(`${name} added`); loadRealSubjects(); } catch (err) { window.SchoolOS.toast(`Could not add subject (${err.message})`); }
+        if (!levels.length) { window.SchoolOS.toast('Choose at least one level'); return; }
+        try { await window.SchoolOS.api('/subjects', { method: 'POST', body: JSON.stringify({ name, code: d.code || undefined, levels, streams }) }); window.SchoolOS.toast(`${name} added`); loadRealSubjects(); } catch (err) { window.SchoolOS.toast(`Could not add subject (${err.message})`); }
       },
     });
   }
@@ -303,24 +706,46 @@
     if (!marksBody && !approvalsBody && !resultsKpi) return;
     let results = [];
     try { results = await window.SchoolOS.api('/results'); } catch (err) {
-      if (marksBody) marksBody.innerHTML = `<tr><td colspan="6">Could not load marks (${err.message})</td></tr>`;
-      if (approvalsBody) approvalsBody.innerHTML = `<tr><td colspan="6">Could not load results (${err.message})</td></tr>`;
+      if (marksBody) marksBody.innerHTML = `<tr><td colspan="7">Could not load marks (${err.message})</td></tr>`;
+      if (approvalsBody) approvalsBody.innerHTML = `<tr><td colspan="7">Could not load results (${err.message})</td></tr>`;
       return;
     }
     if (marksBody) {
       const drafts = results.filter((r) => r.status === 'DRAFT');
-      marksBody.innerHTML = drafts.length ? drafts.map((r) => `<tr><td>${r.student ? r.student.firstName + ' ' + r.student.lastName : '—'}</td><td>${r.subject?.name || '—'}</td><td>${r.term?.name || '—'}</td><td>${r.continuousAssessmentScore ?? '—'}</td><td>${r.examScore ?? '—'}</td><td>${r.totalScore ?? '—'}</td></tr>`).join('') : '<tr><td colspan="6">No draft marks yet.</td></tr>';
+      marksBody.innerHTML = drafts.length ? drafts.map((r) => `<tr><td>${r.student ? r.student.firstName + ' ' + r.student.lastName : '—'}</td><td>${r.subject?.name || '—'}</td><td>${r.term?.name || '—'}</td><td>${r.continuousAssessmentScore ?? '—'}</td><td>${r.examScore ?? '—'}</td><td>${r.totalScore ?? '—'}</td><td>${r.grade || '—'}</td></tr>`).join('') : '<tr><td colspan="7">No draft marks yet.</td></tr>';
     }
     if (approvalsBody) {
       const relevant = results.filter((r) => r.status === 'SUBMITTED' || r.status === 'APPROVED' || r.status === 'PUBLISHED');
       approvalsBody.innerHTML = relevant.length ? relevant.map((r) => {
-        let action = '<span>→</span>';
-        if (r.status === 'SUBMITTED') action = `<button class="outline-button" data-approve-real-result="${r.id}">Approve</button>`;
-        else if (r.status === 'APPROVED') action = `<button class="outline-button" data-publish-real-result="${r.id}">Publish</button>`;
-        return `<tr><td>${r.student ? r.student.firstName + ' ' + r.student.lastName : '—'}</td><td>${r.subject?.name || '—'}</td><td>${r.term?.name || '—'}</td><td>${r.totalScore ?? '—'}</td><td><span class="status ${r.status !== 'PUBLISHED' ? 'pending' : ''}">${r.status}</span></td><td class="row-action">${action}</td></tr>`;
-      }).join('') : '<tr><td colspan="6">No submitted results yet.</td></tr>';
+        const studentName = r.student ? `${r.student.firstName} ${r.student.lastName}` : 'this student';
+        const subjectName = r.subject?.name || 'this subject';
+        const actions = [];
+        // Grade is computed automatically from the score against the
+        // grading scale at entry time (ResultsService.create) — nothing to
+        // set here, the column below just displays it.
+        if (r.status === 'SUBMITTED') actions.push(`<button class="outline-button" data-approve-real-result="${r.id}" data-student-name="${studentName}" data-subject-name="${subjectName}">Approve</button>`);
+        else if (r.status === 'APPROVED') actions.push(`<button class="outline-button" data-publish-real-result="${r.id}" data-student-name="${studentName}" data-subject-name="${subjectName}">Publish</button>`);
+        return `<tr><td>${r.student ? r.student.firstName + ' ' + r.student.lastName : '—'}</td><td>${r.subject?.name || '—'}</td><td>${r.term?.name || '—'}</td><td>${r.totalScore ?? '—'}</td><td>${r.grade || '—'}</td><td><span class="status ${r.status !== 'PUBLISHED' ? 'pending' : ''}">${r.status}</span></td><td class="row-action">${actions.join(' ') || '<span>→</span>'}</td></tr>`;
+      }).join('') : '<tr><td colspan="7">No submitted results yet.</td></tr>';
     }
     if (resultsKpi) resultsKpi.textContent = results.filter((r) => r.status === 'SUBMITTED').length;
+  }
+  function openSetGradeModal(id, currentGrade, studentName, subjectName) {
+    window.SchoolOS.formModal({
+      eyebrow: 'Results', title: `${currentGrade ? 'Edit' : 'Set'} grade — ${studentName}`,
+      sub: `${subjectName}. Only the Proprietor or Principal can set a result's grade.`,
+      fields: [{ name: 'grade', label: 'Grade', value: currentGrade || '', placeholder: 'e.g. A' }],
+      submitLabel: 'Save grade',
+      onSubmit: async (d) => {
+        const grade = (d.grade || '').trim();
+        if (!grade) { window.SchoolOS.toast('Grade is required'); return; }
+        try {
+          await window.SchoolOS.api('/results/' + id + '/grade', { method: 'PATCH', body: JSON.stringify({ grade }) });
+          window.SchoolOS.toast('Grade saved');
+          loadRealAcademicsResults();
+        } catch (err) { window.SchoolOS.toast(`Could not save grade (${err.message})`); }
+      },
+    });
   }
   async function approveRealResult(id) {
     try { await window.SchoolOS.api('/results/' + id + '/approve', { method: 'PATCH' }); window.SchoolOS.toast('Result approved'); loadRealAcademicsResults(); } catch (err) { window.SchoolOS.toast(`Could not approve (${err.message})`); }
@@ -331,10 +756,10 @@
 
   // ============ Results (student / parent / teacher) ============
   function pageStudentResults(label) {
-    return `<section class="page workspace-page" id="${window.SchoolOS.slug(label)}"><div class="page-heading"><div><p class="eyebrow">Results</p><h1>${label}</h1><p class="subtitle">Live from the API — every published result for your account.</p></div></div><section class="data-card"><table class="data-table"><thead><tr><th>Subject</th><th>Term</th><th>CA</th><th>Exam</th><th>Total</th><th>Grade</th></tr></thead><tbody id="realStudentResultsBody"><tr><td colspan="6">Sign in as a student to load results…</td></tr></tbody></table></section></section>`;
+    return `<section class="page workspace-page" id="${window.SchoolOS.slug(label)}"><div class="page-heading"><div><p class="eyebrow">Results</p><h1>${label}</h1><p class="subtitle">Every published result for your account.</p></div></div><section class="data-card"><table class="data-table"><thead><tr><th>Subject</th><th>Term</th><th>CA</th><th>Exam</th><th>Total</th><th>Grade</th></tr></thead><tbody id="realStudentResultsBody"><tr><td colspan="6">Sign in as a student to load results…</td></tr></tbody></table></section></section>`;
   }
   function pageParentResults(label) {
-    return `<section class="page workspace-page" id="${window.SchoolOS.slug(label)}"><div class="page-heading"><div><p class="eyebrow">Live from the API</p><h1>${label}</h1><p class="subtitle">Published results for your linked children.</p></div></div><div id="realParentResultsBlocks"><p class="modal-sub">Sign in as a parent to load results…</p></div></section>`;
+    return `<section class="page workspace-page" id="${window.SchoolOS.slug(label)}"><div class="page-heading"><div><p class="eyebrow">Results</p><h1>${label}</h1><p class="subtitle">Published results for your linked children.</p></div></div><div id="realParentResultsBlocks"><p class="modal-sub">Sign in as a parent to load results…</p></div></section>`;
   }
   async function loadRealParentResults() {
     const container = document.getElementById('realParentResultsBlocks');
@@ -353,7 +778,7 @@
     } catch (err) { container.innerHTML = `<p class="modal-sub">Could not load your children (${err.message})</p>`; }
   }
   function pageTeacherResultsReal(label) {
-    return `<section class="page workspace-page" id="${window.SchoolOS.slug(label)}"><div class="page-heading"><div><p class="eyebrow">Live from the API</p><h1>${label}</h1><p class="subtitle">Enter marks for the subjects and classes you teach.</p></div><button class="new-button" data-modal="add-marks">+ Add marks</button></div><section class="data-card"><table class="data-table"><thead><tr><th>Student</th><th>Subject</th><th>Term</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody id="realTeacherResultsBody"><tr><td colspan="6">Sign in as a teacher to load results…</td></tr></tbody></table></section></section>`;
+    return `<section class="page workspace-page" id="${window.SchoolOS.slug(label)}"><div class="page-heading"><div><p class="eyebrow">Results</p><h1>${label}</h1><p class="subtitle">Enter marks for the subjects and classes you teach.</p></div><button class="new-button" data-modal="add-marks">+ Add marks</button></div><section class="data-card"><table class="data-table"><thead><tr><th>Student</th><th>Subject</th><th>Term</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody id="realTeacherResultsBody"><tr><td colspan="6">Sign in as a teacher to load results…</td></tr></tbody></table></section></section>`;
   }
   async function loadRealTeacherResults() {
     const tbody = document.getElementById('realTeacherResultsBody');
@@ -451,10 +876,10 @@
 
   // ============ Assignments (student / teacher) ============
   function pageAssignmentsStudent(label) {
-    return `<section class="page workspace-page" id="assignments"><div class="page-heading"><div><p class="eyebrow">My work</p><h1>${label}</h1><p class="subtitle">Live from the API — everything posted for your class.</p></div></div><section class="data-card"><table class="data-table"><thead><tr><th>Assignment</th><th>Description</th><th>Due date</th></tr></thead><tbody id="realStudentAssignmentsBody"><tr><td colspan="3">Sign in as a student to load assignments…</td></tr></tbody></table></section></section>`;
+    return `<section class="page workspace-page" id="assignments"><div class="page-heading"><div><p class="eyebrow">My work</p><h1>${label}</h1><p class="subtitle">Everything posted for your class.</p></div></div><section class="data-card"><table class="data-table"><thead><tr><th>Assignment</th><th>Description</th><th>Due date</th></tr></thead><tbody id="realStudentAssignmentsBody"><tr><td colspan="3">Sign in as a student to load assignments…</td></tr></tbody></table></section></section>`;
   }
   function pageAssignmentsTeacher(label) {
-    return `<section class="page workspace-page" id="assignments"><div class="page-heading"><div><p class="eyebrow">Live from the API</p><h1>${label}</h1><p class="subtitle">Real assignments across the classes you teach.</p></div><button class="new-button" data-modal="new-assignment-real">+ New assignment</button></div><section class="data-card"><table class="data-table"><thead><tr><th>Assignment</th><th>Class</th><th>Subject</th><th>Due date</th></tr></thead><tbody id="realTeacherAssignmentsBody"><tr><td colspan="4">Sign in as a teacher to load assignments…</td></tr></tbody></table></section><p class="modal-sub" style="margin-top:14px">Submission tracking and an approval workflow aren't built on the backend yet — this is every real assignment you've posted, nothing more.</p></section>`;
+    return `<section class="page workspace-page" id="assignments"><div class="page-heading"><div><p class="eyebrow">Assignments</p><h1>${label}</h1><p class="subtitle">Real assignments across the classes you teach.</p></div><button class="new-button" data-modal="new-assignment-real">+ New assignment</button></div><section class="data-card"><table class="data-table"><thead><tr><th>Assignment</th><th>Class</th><th>Subject</th><th>Due date</th></tr></thead><tbody id="realTeacherAssignmentsBody"><tr><td colspan="4">Sign in as a teacher to load assignments…</td></tr></tbody></table></section><p class="modal-sub" style="margin-top:14px">Submission tracking and an approval workflow aren't built on the backend yet — this is every real assignment you've posted, nothing more.</p></section>`;
   }
   async function loadRealTeacherAssignments() {
     const tbody = document.getElementById('realTeacherAssignmentsBody');
@@ -494,7 +919,7 @@
   let studentCbtExams = [];
 
   function pageCbtExamsTeacher(label) {
-    return `<section class="page workspace-page" id="cbt-exams"><div class="page-heading"><div><p class="eyebrow">Live from the API</p><h1>${label}</h1><p class="subtitle">Build CBT question sets for your classes. New exams are reviewed by the principal/proprietor before they go live.</p></div><button class="new-button" data-modal="new-exam">+ New CBT exam</button></div><div class="screen-kpis" id="cbtTeacherKpis"></div><section class="data-card"><table class="data-table"><thead><tr><th>Exam</th><th>Class</th><th>Questions</th><th>Status</th><th></th></tr></thead><tbody id="realCbtTeacherBody"><tr><td colspan="5">Loading…</td></tr></tbody></table></section></section>`;
+    return `<section class="page workspace-page" id="cbt-exams"><div class="page-heading"><div><p class="eyebrow">CBT Exams</p><h1>${label}</h1><p class="subtitle">Build CBT question sets for your classes. New exams are reviewed by the principal/proprietor before they go live.</p></div><button class="new-button" data-modal="new-exam">+ New CBT exam</button></div><div class="screen-kpis" id="cbtTeacherKpis"></div><section class="data-card"><table class="data-table"><thead><tr><th>Exam</th><th>Class</th><th>Questions</th><th>Status</th><th></th></tr></thead><tbody id="realCbtTeacherBody"><tr><td colspan="5">Loading…</td></tr></tbody></table></section></section>`;
   }
   async function loadRealCbtExamsTeacher() {
     const tbody = document.getElementById('realCbtTeacherBody');
@@ -589,7 +1014,7 @@
 
   function pageCbtExamsStudent(label) {
     return `<section class="page workspace-page" id="cbt-exams">
-      <div id="cbtListView"><div class="page-heading"><div><p class="eyebrow">Live from the API</p><h1>${label}</h1><p class="subtitle">Published CBT exams for your class.</p></div></div><section class="data-card"><table class="data-table"><thead><tr><th>Exam</th><th>Subject</th><th>Duration</th><th>Questions</th><th>Status</th><th></th></tr></thead><tbody id="realCbtStudentBody"><tr><td colspan="6">Loading…</td></tr></tbody></table></section></div>
+      <div id="cbtListView"><div class="page-heading"><div><p class="eyebrow">CBT Exams</p><h1>${label}</h1><p class="subtitle">Published CBT exams for your class.</p></div></div><section class="data-card"><table class="data-table"><thead><tr><th>Exam</th><th>Subject</th><th>Duration</th><th>Questions</th><th>Status</th><th></th></tr></thead><tbody id="realCbtStudentBody"><tr><td colspan="6">Loading…</td></tr></tbody></table></section></div>
       <div id="cbtRunner" style="display:none"></div>
       <div id="cbtResultView" style="display:none"></div>
     </section>`;
@@ -684,7 +1109,7 @@
   const resourceChipsFor = (l) => (l.resources && l.resources.length) ? l.resources.map((r) => `<span class="permission-chip">${r.type} · ${r.name}</span>`).join('') : '<small>No resources yet</small>';
 
   function pageLessonsTeacher(label) {
-    return `<section class="page workspace-page" id="lessons"><div class="page-heading"><div><p class="eyebrow">Live from the API</p><h1>${label}</h1><p class="subtitle">Create lessons and share resources with your assigned subject and class.</p></div><button class="new-button" data-modal="new-lesson">+ New lesson</button></div><section class="data-card"><table class="data-table"><thead><tr><th>Lesson</th><th>Subject</th><th>Class</th><th>Date</th><th>Resources</th><th></th></tr></thead><tbody id="realLessonsTeacherBody"><tr><td colspan="6">Loading…</td></tr></tbody></table></section></section>`;
+    return `<section class="page workspace-page" id="lessons"><div class="page-heading"><div><p class="eyebrow">Lessons</p><h1>${label}</h1><p class="subtitle">Create lessons and share resources with your assigned subject and class.</p></div><button class="new-button" data-modal="new-lesson">+ New lesson</button></div><section class="data-card"><table class="data-table"><thead><tr><th>Lesson</th><th>Subject</th><th>Class</th><th>Date</th><th>Resources</th><th></th></tr></thead><tbody id="realLessonsTeacherBody"><tr><td colspan="6">Loading…</td></tr></tbody></table></section></section>`;
   }
   async function loadRealLessonsTeacher() {
     const tbody = document.getElementById('realLessonsTeacherBody');
@@ -754,7 +1179,7 @@
   }
 
   function pageLessonsStudent(label) {
-    return `<section class="page workspace-page" id="lessons"><div class="page-heading"><div><p class="eyebrow">Live from the API</p><h1>${label}</h1><p class="subtitle">Lessons posted for your class.</p></div></div><section class="data-card"><table class="data-table"><thead><tr><th>Lesson</th><th>Subject</th><th>Date</th><th>Resources</th></tr></thead><tbody id="realLessonsStudentBody"><tr><td colspan="4">Loading…</td></tr></tbody></table></section></section>`;
+    return `<section class="page workspace-page" id="lessons"><div class="page-heading"><div><p class="eyebrow">Lessons</p><h1>${label}</h1><p class="subtitle">Lessons posted for your class.</p></div></div><section class="data-card"><table class="data-table"><thead><tr><th>Lesson</th><th>Subject</th><th>Date</th><th>Resources</th></tr></thead><tbody id="realLessonsStudentBody"><tr><td colspan="4">Loading…</td></tr></tbody></table></section></section>`;
   }
   async function loadRealLessonsStudent() {
     const tbody = document.getElementById('realLessonsStudentBody');
@@ -771,7 +1196,7 @@
   }
 
   function pageLessonsParent(label) {
-    return `<section class="page workspace-page" id="lessons"><div class="page-heading"><div><p class="eyebrow">Live from the API</p><h1>${label}</h1><p class="subtitle">Lessons posted for your children's classes.</p></div></div><div id="realLessonsParentBlocks"><p class="modal-sub">Loading…</p></div></section>`;
+    return `<section class="page workspace-page" id="lessons"><div class="page-heading"><div><p class="eyebrow">Lessons</p><h1>${label}</h1><p class="subtitle">Lessons posted for your children's classes.</p></div></div><div id="realLessonsParentBlocks"><p class="modal-sub">Loading…</p></div></section>`;
   }
   async function loadRealLessonsParent() {
     const container = document.getElementById('realLessonsParentBlocks');
@@ -796,7 +1221,7 @@
   }
 
   function pageLessonsOversight(label) {
-    return `<section class="page workspace-page" id="lessons"><div class="page-heading"><div><p class="eyebrow">Live from the API</p><h1>${label}</h1><p class="subtitle">Lessons posted across every class — view only.</p></div><span class="view-only-badge">View only</span></div><section class="data-card"><table class="data-table"><thead><tr><th>Lesson</th><th>Subject</th><th>Class</th><th>Teacher</th><th>Date</th><th>Resources</th></tr></thead><tbody id="realLessonsOversightBody"><tr><td colspan="6">Loading…</td></tr></tbody></table></section></section>`;
+    return `<section class="page workspace-page" id="lessons"><div class="page-heading"><div><p class="eyebrow">Lessons</p><h1>${label}</h1><p class="subtitle">Lessons posted across every class — view only.</p></div><span class="view-only-badge">View only</span></div><section class="data-card"><table class="data-table"><thead><tr><th>Lesson</th><th>Subject</th><th>Class</th><th>Teacher</th><th>Date</th><th>Resources</th></tr></thead><tbody id="realLessonsOversightBody"><tr><td colspan="6">Loading…</td></tr></tbody></table></section></section>`;
   }
   async function loadRealLessonsOversight() {
     const tbody = document.getElementById('realLessonsOversightBody');
@@ -819,9 +1244,38 @@
     return pageLessonsOversight(label);
   }
 
-  // ============ Content Approvals (real — CBT exam review) ============
+  // ============ Content Approvals (real — CBT exam review + bulk result approval) ============
   function pageContentApprovals(label) {
-    return `<section class="page workspace-page" id="content-approvals"><div class="page-heading"><div><p class="eyebrow">Live from the API</p><h1>${label}</h1><p class="subtitle">CBT exams a teacher has submitted, awaiting your review before they go live to students. Assignments and Lessons post directly today — no review step for those.</p></div></div><section class="data-card"><table class="data-table"><thead><tr><th>Exam</th><th>Class</th><th>Subject</th><th>Teacher</th><th>Questions</th><th></th></tr></thead><tbody id="realPendingExamsBody"><tr><td colspan="6">Loading…</td></tr></tbody></table></section></section>`;
+    return `<section class="page workspace-page" id="content-approvals"><div class="page-heading"><div><p class="eyebrow">Approvals</p><h1>${label}</h1><p class="subtitle">CBT exams a teacher has submitted, and results awaiting approval — for every teacher and class. Assignments and Lessons post directly today — no review step for those.</p></div><button class="new-button" data-approve-all>Approve all pending</button></div><section class="data-card"><table class="data-table"><thead><tr><th>Exam</th><th>Class</th><th>Subject</th><th>Teacher</th><th>Questions</th><th></th></tr></thead><tbody id="realPendingExamsBody"><tr><td colspan="6">Loading…</td></tr></tbody></table></section></section>`;
+  }
+  /** One button, everywhere: bulk-approves every pending CBT exam (goes
+   * live to students immediately, same as the per-row Approve button) and
+   * every SUBMITTED result (moves to Approved — publishing is still a
+   * separate, deliberate step) across the whole school, not scoped to one
+   * class or teacher. Uses the same single-item endpoints as the per-row
+   * buttons, so RBAC and per-item audit logging are unchanged — this is a
+   * client-side loop, not a new bulk endpoint. */
+  async function bulkApproveAll() {
+    let exams = [], results = [];
+    try { exams = await window.SchoolOS.api('/cbt-exams/pending-review'); } catch (err) { window.SchoolOS.toast(`Could not load pending exams (${err.message})`); return; }
+    try { results = (await window.SchoolOS.api('/results')).filter((r) => r.status === 'SUBMITTED'); } catch (err) { window.SchoolOS.toast(`Could not load pending results (${err.message})`); return; }
+
+    if (!exams.length && !results.length) { window.SchoolOS.toast('Nothing pending — all caught up'); return; }
+
+    const msg = `Approve ${exams.length} pending exam${exams.length === 1 ? '' : 's'} and ${results.length} pending result${results.length === 1 ? '' : 's'}, across every teacher and class?\n\nExams go live to students immediately. Results move to Approved (publishing to students/parents is still a separate step).`;
+    if (!window.confirm(msg)) return;
+
+    window.SchoolOS.toast('Approving…');
+    const [examOutcomes, resultOutcomes] = await Promise.all([
+      Promise.allSettled(exams.map((ex) => window.SchoolOS.api('/cbt-exams/' + ex.id + '/approve', { method: 'POST' }))),
+      Promise.allSettled(results.map((r) => window.SchoolOS.api('/results/' + r.id + '/approve', { method: 'PATCH' }))),
+    ]);
+    const examOk = examOutcomes.filter((o) => o.status === 'fulfilled').length;
+    const resultOk = resultOutcomes.filter((o) => o.status === 'fulfilled').length;
+    const failed = (exams.length - examOk) + (results.length - resultOk);
+    window.SchoolOS.toast(`Approved ${examOk}/${exams.length} exams and ${resultOk}/${results.length} results${failed ? ` — ${failed} failed` : ''}`);
+    loadRealPendingExams();
+    loadRealAcademicsResults();
   }
   async function loadRealPendingExams() {
     const tbody = document.getElementById('realPendingExamsBody');
@@ -829,7 +1283,7 @@
     tbody.innerHTML = '<tr><td colspan="6">Loading…</td></tr>';
     try {
       const exams = await window.SchoolOS.api('/cbt-exams/pending-review');
-      tbody.innerHTML = exams.length ? exams.map((ex) => `<tr><td><strong>${ex.title}</strong></td><td>${ex.classArm.schoolClass.name} · ${ex.classArm.name}</td><td>${ex.subject?.name || '—'}</td><td>${ex.createdByStaffProfile?.user ? ex.createdByStaffProfile.user.firstName + ' ' + ex.createdByStaffProfile.user.lastName : '—'}</td><td>${ex._count.questions}</td><td class="row-action"><button class="outline-button" data-approve-exam="${ex.id}">Approve</button> <button class="outline-button" data-reject-exam="${ex.id}">Reject</button></td></tr>`).join('') : '<tr><td colspan="6">Nothing pending review.</td></tr>';
+      tbody.innerHTML = exams.length ? exams.map((ex) => `<tr><td><strong>${ex.title}</strong></td><td>${ex.classArm.schoolClass.name} · ${ex.classArm.name}</td><td>${ex.subject?.name || '—'}</td><td>${ex.createdByStaffProfile?.user ? ex.createdByStaffProfile.user.firstName + ' ' + ex.createdByStaffProfile.user.lastName : '—'}</td><td>${ex._count.questions}</td><td class="row-action"><button class="outline-button" data-approve-exam="${ex.id}" data-exam-title="${ex.title}">Approve</button> <button class="outline-button" data-reject-exam="${ex.id}">Reject</button></td></tr>`).join('') : '<tr><td colspan="6">Nothing pending review.</td></tr>';
     } catch (err) { tbody.innerHTML = `<tr><td colspan="6">Could not load pending exams (${err.message})</td></tr>`; }
   }
   async function approvePendingExam(id) {
@@ -852,29 +1306,63 @@
     });
   }
 
-  // ============ Timetable (standalone, teacher / student) ============
+  // ============ Timetable (standalone — teacher / student / parent / principal) ============
   function pageTimetable(label) {
+    const id = window.SchoolOS.slug(label);
     if (currentRole === 'student') {
-      return `<section class="page workspace-page" id="${window.SchoolOS.slug(label)}"><div class="page-heading"><div><p class="eyebrow">My timetable</p><h1>${label}</h1><p class="subtitle">No timetable data source is built yet — this isn't showing you fake data.</p></div></div><section class="data-card"><div class="empty-state"><span class="mini-avatar">▤</span><h3>Not available yet</h3><p>Timetable scheduling hasn't been built on the backend. When it is, this page will show your real weekly schedule.</p></div></section></section>`;
+      return `<section class="page workspace-page" id="${id}"><div class="page-heading"><div><p class="eyebrow">My timetable</p><h1>${label}</h1><p class="subtitle">Your class's real weekly schedule.</p></div></div><section class="data-card"><div id="studentTimetableGrid"><p class="modal-sub">Sign in as a student to load your timetable…</p></div></section></section>`;
     }
     if (currentRole === 'teacher') {
-      const cls = teacherClassMap['Tunde Bello']?.cls || 'JSS 2A';
-      const grid = classTimetables[cls] || classTimetables['JSS 2A'];
-      const ttRows = timetablePeriods.map((p, r) => `<tr><td class="tt-period">${p}</td>${timetableDays.map((d, c) => `<td class="${grid[r][c].startsWith('—') ? 'tt-break' : ''}">${grid[r][c]}</td>`).join('')}</tr>`).join('');
-      return `<section class="page workspace-page" id="${window.SchoolOS.slug(label)}"><div class="page-heading"><div><p class="eyebrow">My timetable</p><h1>${label}</h1><p class="subtitle">${cls} · Third term. Set by the academic team.</p></div></div><section class="data-card"><table class="data-table timetable-grid"><thead><tr><th></th>${timetableDays.map((d) => `<th>${d}</th>`).join('')}</tr></thead><tbody>${ttRows}</tbody></table></section></section>`;
+      return `<section class="page workspace-page" id="${id}"><div class="page-heading"><div><p class="eyebrow">My timetable</p><h1>${label}</h1><p class="subtitle">Every period you teach, across every class, with real times.</p></div></div><section class="data-card"><div id="teacherTimetableGrid"><p class="modal-sub">Sign in as a teacher to load your timetable…</p></div></section></section>`;
     }
-    return window.SchoolOS.renderGenericPage(label);
+    if (currentRole === 'parent') {
+      return `<section class="page workspace-page" id="${id}"><div class="page-heading"><div><p class="eyebrow">Timetable</p><h1>${label}</h1><p class="subtitle">Your linked children's weekly timetables.</p></div></div><div id="parentTimetableBlocks"><p class="modal-sub">Sign in as a parent to load timetables…</p></div></section>`;
+    }
+    // PRINCIPAL (and anyone else reaching this standalone tab): same
+    // picker + grid as Academics > Timetable, just in its own scope so
+    // both can render into the DOM at once without id collisions.
+    return `<section class="page workspace-page" id="${id}"><div class="page-heading"><div><p class="eyebrow">Timetable</p><h1>${label}</h1><p class="subtitle">Weekly schedule, generated automatically.</p></div></div><section class="data-card"><div id="ttStandaloneTimetableContainer"><p class="modal-sub">Loading…</p></div></section></section>`;
+  }
+  async function loadTeacherTimetable() {
+    if (!document.getElementById('teacherTimetableGrid') || !window.SchoolOS.getAccessToken()) return;
+    await loadTimetableGridByFetch('teacherTimetableGrid', '/portal/teacher/timetable', teacherCellFn);
+  }
+  async function loadStudentTimetable() {
+    if (!document.getElementById('studentTimetableGrid') || !window.SchoolOS.getAccessToken()) return;
+    await loadTimetableGridByFetch('studentTimetableGrid', '/portal/student/timetable', classArmCellFn);
+  }
+  async function loadParentTimetable() {
+    const container = document.getElementById('parentTimetableBlocks');
+    if (!container || !window.SchoolOS.getAccessToken()) return;
+    container.innerHTML = '<p class="modal-sub">Loading…</p>';
+    try {
+      const children = await window.SchoolOS.api('/portal/parent/children');
+      if (!children.length) { container.innerHTML = '<div class="data-card"><div class="empty-state"><span class="mini-avatar">▤</span><h3>No children linked yet</h3><p>Ask the school to link your account to your child’s record.</p></div></div>'; return; }
+      const blocks = await Promise.all(children.map(async (link) => {
+        const s = link.student;
+        let gridHtml = '<p class="modal-sub">Loading…</p>';
+        try { gridHtml = timetableGridHtml(await window.SchoolOS.api('/portal/parent/children/' + s.id + '/timetable'), classArmCellFn); } catch (err) { gridHtml = `<p class="modal-sub">Could not load (${err.message})</p>`; }
+        return `<section class="data-card fee-child-card"><div class="data-toolbar"><div class="person-cell"><span class="mini-avatar">${window.SchoolOS.initialsOf(s.firstName + ' ' + s.lastName)}</span><div><strong>${s.firstName} ${s.lastName}</strong><small>${s.admissionNo}</small></div></div></div>${gridHtml}</section>`;
+      }));
+      container.innerHTML = blocks.join('');
+    } catch (err) { container.innerHTML = `<p class="modal-sub">Could not load your children (${err.message})</p>`; }
   }
 
   // ============ Student's own Classes / Notices / Profile ============
   function pageStudentClasses(label) {
-    return `<section class="page workspace-page" id="${window.SchoolOS.slug(label)}"><div class="page-heading"><div><p class="eyebrow">My classes</p><h1>${label}</h1><p class="subtitle">Live from the API — subjects and teachers for your class.</p></div></div><section class="data-card"><table class="data-table"><thead><tr><th>Subject</th><th>Teacher</th></tr></thead><tbody id="realStudentSubjectsBody"><tr><td colspan="2">Sign in as a student to load subjects…</td></tr></tbody></table></section></section>`;
+    return `<section class="page workspace-page" id="${window.SchoolOS.slug(label)}"><div class="page-heading"><div><p class="eyebrow">My classes</p><h1>${label}</h1><p class="subtitle">Subjects and teachers for your class.</p></div></div><section class="data-card"><table class="data-table"><thead><tr><th>Subject</th><th>Teacher</th></tr></thead><tbody id="realStudentSubjectsBody"><tr><td colspan="2">Sign in as a student to load subjects…</td></tr></tbody></table></section></section>`;
   }
   function pageStudentNoticesReal(label) {
-    return `<section class="page workspace-page" id="${window.SchoolOS.slug(label)}"><div class="page-heading"><div><p class="eyebrow">Live from the API</p><h1>${label}</h1><p class="subtitle">Real in-app notifications for your account.</p></div></div><section class="data-card"><table class="data-table"><thead><tr><th>Notice</th><th>When</th><th></th></tr></thead><tbody id="realStudentNoticesBody"><tr><td colspan="3">Sign in as a student to load notices…</td></tr></tbody></table></section></section>`;
+    return `<section class="page workspace-page" id="${window.SchoolOS.slug(label)}"><div class="page-heading"><div><p class="eyebrow">Notices</p><h1>${label}</h1><p class="subtitle">Real in-app notifications for your account.</p></div></div><section class="data-card"><table class="data-table"><thead><tr><th>Notice</th><th>When</th><th></th></tr></thead><tbody id="realStudentNoticesBody"><tr><td colspan="3">Sign in as a student to load notices…</td></tr></tbody></table></section></section>`;
+  }
+  async function markNoticeAsRead(id) {
+    try {
+      await window.SchoolOS.api('/notifications/' + id + '/read', { method: 'PATCH' });
+      loadRealStudentPortalData();
+    } catch (err) { window.SchoolOS.toast(`Could not mark as read (${err.message})`); }
   }
   function pageStudentProfileReal(label) {
-    return `<section class="page workspace-page" id="${window.SchoolOS.slug(label)}"><div class="page-heading"><div><p class="eyebrow">Live from the API</p><h1>${label}</h1><p class="subtitle">Your real student record.</p></div></div><section class="data-card" id="realStudentProfileCard"><p>Sign in as a student to load your profile…</p></section></section>`;
+    return `<section class="page workspace-page" id="${window.SchoolOS.slug(label)}"><div class="page-heading"><div><p class="eyebrow">Profile</p><h1>${label}</h1><p class="subtitle">Your real student record.</p></div></div><section class="data-card" id="realStudentProfileCard"><p>Sign in as a student to load your profile…</p></section></section>`;
   }
   async function loadRealStudentPortalData() {
     const resultsBody = document.getElementById('realStudentResultsBody');
@@ -902,7 +1390,10 @@
     }
     if (noticesBody) {
       noticesBody.innerHTML = '<tr><td colspan="3">Loading…</td></tr>';
-      try { const notices = await window.SchoolOS.api('/notifications/me'); noticesBody.innerHTML = notices.length ? notices.map((n) => `<tr><td><strong>${n.title}</strong><br><small>${n.body}</small></td><td>${new Date(n.createdAt).toLocaleString()}</td><td>${n.readAt ? '<span class="status">Read</span>' : '<span class="status pending">Unread</span>'}</td></tr>`).join('') : '<tr><td colspan="3">No notices yet.</td></tr>'; } catch (err) { noticesBody.innerHTML = `<tr><td colspan="3">Could not load notices (${err.message})</td></tr>`; }
+      try {
+        const notices = await window.SchoolOS.api('/notifications/me');
+        noticesBody.innerHTML = notices.length ? notices.map((n) => `<tr><td><strong>${n.title}</strong><br><small>${n.body}</small></td><td>${new Date(n.createdAt).toLocaleString()}</td><td class="row-action">${n.readAt ? '<span class="status">Read</span>' : `<span class="status pending">Unread</span> <button class="outline-button" data-mark-notice-read="${n.id}">Mark as read</button>`}</td></tr>`).join('') : '<tr><td colspan="3">No notices yet.</td></tr>';
+      } catch (err) { noticesBody.innerHTML = `<tr><td colspan="3">Could not load notices (${err.message})</td></tr>`; }
     }
     if (profileCard) {
       profileCard.innerHTML = '<p>Loading…</p>';
@@ -910,7 +1401,32 @@
         const p = await window.SchoolOS.api('/portal/student/me');
         const cls = p.currentClassArm ? `${p.currentClassArm.schoolClass.name} · ${p.currentClassArm.name}` : 'Not yet assigned to a class';
         const guardians = p.guardianLinks.length ? p.guardianLinks.map((g) => `${g.guardian.firstName} ${g.guardian.lastName} (${g.relationship.toLowerCase()})`).join(', ') : 'No guardian linked yet';
-        profileCard.innerHTML = `<div class="modal-detail"><div class="modal-detail-row"><span>Name</span><strong>${p.firstName} ${p.lastName}</strong></div><div class="modal-detail-row"><span>Admission No.</span><strong>${p.admissionNo}</strong></div><div class="modal-detail-row"><span>Class</span><strong>${cls}</strong></div><div class="modal-detail-row"><span>Status</span><strong>${p.status}</strong></div><div class="modal-detail-row"><span>Gender</span><strong>${p.gender || '—'}</strong></div><div class="modal-detail-row"><span>Date of birth</span><strong>${p.dateOfBirth ? new Date(p.dateOfBirth).toDateString() : '—'}</strong></div><div class="modal-detail-row"><span>Guardian(s)</span><strong>${guardians}</strong></div></div>`;
+        const isSeniorSecondary = p.currentClassArm && p.currentClassArm.schoolClass.level === 'SENIOR_SECONDARY';
+        // Stream itself is admin-assigned (at creation, or directly by an
+        // admin later) — a student never sets it instantly. Only a
+        // student in their first Senior Secondary class (canRequestStreamChange,
+        // computed server-side from the promotion chain) can even request
+        // a switch, and it needs an admin's approval before anything
+        // actually changes (see StudentsService.requestStreamChange).
+        let streamRow = '';
+        if (isSeniorSecondary) {
+          const currentStreamLabel = p.stream ? STREAM_LABELS[p.stream] : 'Not set yet';
+          streamRow = `<div class="modal-detail-row"><span>Stream</span><strong>${currentStreamLabel}</strong></div>`;
+          if (p.canRequestStreamChange) {
+            let pending = null;
+            try { pending = (await window.SchoolOS.api('/portal/student/stream-requests')).find((r) => r.status === 'PENDING'); } catch (err) { /* non-fatal — just won't show pending state */ }
+            streamRow += pending
+              ? `<div class="modal-detail-row"><span>Switch request</span><strong>Pending — requested ${STREAM_LABELS[pending.requestedStream]}</strong></div>`
+              : `<div class="modal-detail-row"><span>Switch stream</span><span class="inline-edit-row"><select id="requestStreamSelect" aria-label="Requested stream"><option value="">— Choose —</option>${Object.entries(STREAM_LABELS).filter(([k]) => k !== p.stream).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select><button type="button" class="outline-button" id="requestStreamSwitchBtn">Request switch</button></span></div>`;
+          }
+        }
+        profileCard.innerHTML = `<div class="modal-detail"><div class="modal-detail-row"><span>Name</span><strong>${p.firstName} ${p.lastName}</strong></div><div class="modal-detail-row"><span>Admission No.</span><strong>${p.admissionNo}</strong></div><div class="modal-detail-row"><span>Class</span><strong>${cls}</strong></div><div class="modal-detail-row"><span>Status</span><strong>${p.status}</strong></div><div class="modal-detail-row"><span>Gender</span><strong>${p.gender || '—'}</strong></div><div class="modal-detail-row"><span>Date of birth</span><strong>${p.dateOfBirth ? new Date(p.dateOfBirth).toDateString() : '—'}</strong></div><div class="modal-detail-row"><span>Guardian(s)</span><strong>${guardians}</strong></div>${streamRow}</div>`;
+        const requestBtn = document.getElementById('requestStreamSwitchBtn');
+        if (requestBtn) requestBtn.addEventListener('click', async () => {
+          const requestedStream = document.getElementById('requestStreamSelect').value;
+          if (!requestedStream) { window.SchoolOS.toast('Choose a stream first'); return; }
+          try { await window.SchoolOS.api('/portal/student/stream-requests', { method: 'POST', body: JSON.stringify({ requestedStream }) }); window.SchoolOS.toast('Switch request submitted — awaiting admin approval'); loadRealStudentPortalData(); } catch (err) { window.SchoolOS.toast(`Could not submit request (${err.message})`); }
+        });
       } catch (err) { profileCard.innerHTML = `<p>Could not load profile (${err.message})</p>`; }
     }
     if (resultsBody) {
@@ -948,11 +1464,13 @@
 
     // Fire every loader — each is individually DOM-guarded, matching the
     // original SPA's "run them all on every render" pattern.
-    loadRealTeachers(); loadRealClasses(); loadRealSubjects(); loadRealAcademicsResults();
+    loadRealTeachers(); loadRealClasses(); loadRealSubjects(); loadRealAcademicsResults(); loadGradingScale();
     loadRealTeacherResults(); loadRealParentResults(); loadRealTeacherAssignments(); loadRealStudentPortalData();
     loadRealMyClasses();
     loadRealLessonsTeacher(); loadRealLessonsStudent(); loadRealLessonsParent(); loadRealLessonsOversight();
     loadRealCbtExamsTeacher(); loadRealCbtExamsStudent(); loadRealPendingExams();
+    loadTeacherTimetable(); loadStudentTimetable(); loadParentTimetable();
+    renderAdminTimetableSection('academics'); renderAdminTimetableSection('ttStandalone');
   }
   function showTab(id) {
     document.querySelectorAll('#academicsSections .workspace-page').forEach((p) => p.classList.toggle('visible', p.id === id));
@@ -966,8 +1484,8 @@
 
   window.SchoolOS.modalOpeners = Object.assign(window.SchoolOS.modalOpeners || {}, {
     'new-teacher': openNewTeacherModal, 'new-class': openNewClassModal, 'new-subject': openNewSubjectModal,
-    'add-marks': openAddMarksModal, 'new-assignment-real': openNewAssignmentRealModal, 'new-timetable': openNewTimetableModal,
-    'new-exam': openNewExamModal, 'new-lesson': openNewLessonModal,
+    'add-marks': openAddMarksModal, 'new-assignment-real': openNewAssignmentRealModal,
+    'new-exam': openNewExamModal, 'new-lesson': openNewLessonModal, 'new-grade-band': openNewGradeBandModal,
   });
 
   document.addEventListener('click', (e) => {
@@ -975,13 +1493,25 @@
     if (outerTab) { showTab(outerTab.dataset.tab); history.replaceState(null, '', '#' + outerTab.dataset.tab); }
     const gt = e.target.closest('[data-goto-tab]'); if (gt) { const tb = document.querySelector('.workspace-page.visible [data-tab="' + gt.dataset.gotoTab + '"]'); if (tb) tb.click(); }
     const addArm = e.target.closest('[data-add-arm]'); if (addArm) openNewClassArmModal(addArm.dataset.addArm);
+    const saveLevel = e.target.closest('[data-save-level]'); if (saveLevel) saveClassLevel(saveLevel.dataset.saveLevel);
+    const saveArmStr = e.target.closest('[data-save-arm-stream]'); if (saveArmStr) saveArmStream(saveArmStr.dataset.saveArmStream, saveArmStr.dataset.armClassId);
+    const savePromotesTo = e.target.closest('[data-save-promotes-to]'); if (savePromotesTo) saveClassPromotesTo(savePromotesTo.dataset.savePromotesTo);
+    const promoteArm = e.target.closest('[data-promote-arm]'); if (promoteArm) openPromotionModal(promoteArm.dataset.promoteArm, promoteArm.dataset.armLabel);
     const viewClass = e.target.closest('[data-view-class]'); if (viewClass) openClassDetailModal(viewClass.dataset.viewClass);
     const viewTeacher = e.target.closest('[data-view-teacher]'); if (viewTeacher) openTeacherDetailModal(viewTeacher.dataset.viewTeacher);
+    const rmAsg = e.target.closest('[data-remove-assignment]');
+    if (rmAsg && window.confirm(`Remove ${rmAsg.dataset.teacherName} as the ${rmAsg.dataset.subjectName} teacher for ${rmAsg.dataset.className}?`)) removeTeacherAssignment(rmAsg.dataset.removeAssignment);
     const submitResultBtn = e.target.closest('[data-submit-result]'); if (submitResultBtn) submitResult(submitResultBtn.dataset.submitResult);
-    const approveBtn = e.target.closest('[data-approve-real-result]'); if (approveBtn) approveRealResult(approveBtn.dataset.approveRealResult);
-    const publishBtn = e.target.closest('[data-publish-real-result]'); if (publishBtn) publishRealResult(publishBtn.dataset.publishRealResult);
-    const eg = e.target.closest('[data-edit-grade]'); if (eg) openEditGradeModal(eg.dataset.editGrade);
-    const ec = e.target.closest('[data-edit-cell]'); if (ec) { const [r, c] = ec.dataset.editCell.split(',').map(Number); openEditTimetableCellModal(r, c); }
+    const approveBtn = e.target.closest('[data-approve-real-result]');
+    if (approveBtn && window.confirm(`Approve ${approveBtn.dataset.studentName}'s ${approveBtn.dataset.subjectName} result?`)) approveRealResult(approveBtn.dataset.approveRealResult);
+    const publishBtn = e.target.closest('[data-publish-real-result]');
+    if (publishBtn && window.confirm(`Publish ${publishBtn.dataset.studentName}'s ${publishBtn.dataset.subjectName} result? This makes it visible to the student and their parent(s).`)) publishRealResult(publishBtn.dataset.publishRealResult);
+    const egb = e.target.closest('[data-edit-grade-band]'); if (egb) openEditGradeBandModal(egb.dataset.editGradeBand, egb.dataset.grade, egb.dataset.min, egb.dataset.max, egb.dataset.meaning);
+    const dgb = e.target.closest('[data-delete-grade-band]'); if (dgb) deleteGradeBand(dgb.dataset.deleteGradeBand, dgb.dataset.grade);
+    const genTt = e.target.closest('[data-generate-timetable]'); if (genTt) generateTimetableAndReload();
+    const ttSettings = e.target.closest('[data-open-timetable-settings]'); if (ttSettings) openTimetableSettingsModal();
+    const apAll = e.target.closest('[data-approve-all]'); if (apAll) bulkApproveAll();
+    const mnr = e.target.closest('[data-mark-notice-read]'); if (mnr) markNoticeAsRead(mnr.dataset.markNoticeRead);
     const adr = e.target.closest('[data-add-resource]'); if (adr) openAddResourceModal(adr.dataset.addResource);
     const ste = e.target.closest('[data-submit-teacher-exam]'); if (ste) submitTeacherExam(ste.dataset.submitTeacherExam);
     const ver = e.target.closest('[data-view-exam-results]'); if (ver) openExamResultsModal(ver.dataset.viewExamResults);
@@ -992,10 +1522,38 @@
     if (e.target.closest('#cbtNextBtn')) cbtNext();
     if (e.target.closest('#cbtPrevBtn')) cbtPrev();
     if (e.target.closest('#cbtBackBtn')) { document.getElementById('cbtResultView').style.display = 'none'; document.getElementById('cbtListView').style.display = ''; loadRealCbtExamsStudent(); }
-    const apEx = e.target.closest('[data-approve-exam]'); if (apEx) approvePendingExam(apEx.dataset.approveExam);
+    const apEx = e.target.closest('[data-approve-exam]');
+    if (apEx && window.confirm(`Approve and publish "${apEx.dataset.examTitle}"? Students will be able to attempt it immediately.`)) approvePendingExam(apEx.dataset.approveExam);
     const rjEx = e.target.closest('[data-reject-exam]'); if (rjEx) rejectPendingExam(rjEx.dataset.rejectExam);
   });
-  document.addEventListener('change', (e) => { if (e.target.id === 'timetableClassSelect') selectTimetableClass(e.target.value); });
+  document.addEventListener('change', (e) => {
+    if (e.target.id === 'classesLevelFilter') renderClassesTable();
+    if (e.target.id === 'subjectsLevelFilter') renderSubjectsTable();
+    if (e.target.id === 'teachersLevelFilter') renderTeachersTable();
+    const ttSel = e.target.closest('[data-timetable-arm-select]');
+    if (ttSel) { const scope = ttSel.dataset.timetableArmSelect; timetableSelectedArm[scope] = e.target.value; loadTimetableGridByFetch(`${scope}TimetableGrid`, `/timetable/class-arm/${e.target.value}`, classArmCellFn); }
+    const sct = e.target.closest('[data-set-class-teacher]');
+    if (sct) {
+      const teacherName = e.target.value ? e.target.selectedOptions[0].textContent : null;
+      const armName = sct.dataset.armName || 'this class';
+      const message = teacherName ? `Make ${teacherName} the class teacher of ${armName}?` : `Remove the current class teacher from ${armName}?`;
+      if (window.confirm(message)) {
+        sct.dataset.previousValue = e.target.value;
+        setArmClassTeacher(sct.dataset.setClassTeacher, e.target.value);
+      } else {
+        e.target.value = sct.dataset.previousValue || '';
+      }
+    }
+    const rst = e.target.closest('[data-reassign-subject-teacher]');
+    if (rst) {
+      const teacherName = e.target.selectedOptions[0].textContent;
+      if (window.confirm(`Make ${teacherName} the ${rst.dataset.subjectName} teacher for this class? This replaces the current subject teacher.`)) {
+        reassignSubjectTeacher(rst.dataset.reassignSubjectTeacher, rst.dataset.subjectId, e.target.value);
+      } else {
+        e.target.value = rst.dataset.previousValue || '';
+      }
+    }
+  });
 
   window.SchoolOS.ready.then((role) => {
     if (!role) return;

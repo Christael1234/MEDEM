@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { Roles } from '../../common/rbac/decorators/roles.decorator';
 import { AnnouncementsService } from './announcements.service';
 import { CommunicationLogService } from './communication-log.service';
@@ -38,6 +38,12 @@ export class CommunicationController {
   @Get('announcements')
   listAnnouncements() {
     return this.announcements.list();
+  }
+
+  @Roles(...STAFF_ROLES)
+  @Get('announcements/:id/recipients')
+  listAnnouncementRecipients(@Param('id') id: string) {
+    return this.announcements.listRecipients(id);
   }
 
   @Roles('PROPRIETOR', 'PRINCIPAL')

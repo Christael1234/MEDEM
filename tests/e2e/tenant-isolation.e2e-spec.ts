@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import request from 'supertest';
 import { AppModule } from '../../src/app.module';
+import { PrismaExceptionFilter } from '../../src/common/filters/prisma-exception.filter';
 
 /**
  * The two suites CLAUDE.md calls out as mattering most at this stage:
@@ -42,6 +43,7 @@ describe('Tenant isolation & RBAC (e2e)', () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    app.useGlobalFilters(new PrismaExceptionFilter());
     await app.init();
 
     const superAdminEmail = `e2e-superadmin-${suffix}@schoolos.dev`;
@@ -83,7 +85,7 @@ describe('Tenant isolation & RBAC (e2e)', () => {
     const studentRes = await request(app.getHttpServer())
       .post('/students')
       .set('Authorization', `Bearer ${tenantAProprietorToken}`)
-      .send({ campusId, firstName: 'Isolated', lastName: 'Student' })
+      .send({ campusId, firstName: 'Isolated', lastName: 'Student', guardianFirstName: 'Parent', guardianLastName: 'Isolated', guardianRelationship: 'FATHER' })
       .expect(201);
     tenantAStudentId = studentRes.body.id;
 
@@ -160,7 +162,7 @@ describe('Tenant isolation & RBAC (e2e)', () => {
       await request(app.getHttpServer())
         .post('/students')
         .set('Authorization', `Bearer ${tenantAProprietorToken}`)
-        .send({ campusId: campusesRes.body[0].id, firstName: 'Second', lastName: 'Student' })
+        .send({ campusId: campusesRes.body[0].id, firstName: 'Second', lastName: 'Student', guardianFirstName: 'Parent', guardianLastName: 'Second', guardianRelationship: 'MOTHER' })
         .expect(201);
     });
 
@@ -199,13 +201,13 @@ describe('Tenant isolation & RBAC (e2e)', () => {
       const subjectRes = await request(app.getHttpServer())
         .post('/subjects')
         .set('Authorization', `Bearer ${tenantAProprietorToken}`)
-        .send({ name: `Subject ${suffix}` })
+        .send({ name: `Subject ${suffix}`, levels: ['JUNIOR_SECONDARY'] })
         .expect(201);
 
       const classRes = await request(app.getHttpServer())
         .post('/classes')
         .set('Authorization', `Bearer ${tenantAProprietorToken}`)
-        .send({ campusId, name: `Class ${suffix}` })
+        .send({ campusId, name: `Class ${suffix}`, level: 'JUNIOR_SECONDARY' })
         .expect(201);
 
       const armRes = await request(app.getHttpServer())
@@ -222,6 +224,9 @@ describe('Tenant isolation & RBAC (e2e)', () => {
           firstName: 'Result',
           lastName: 'Subject',
           currentClassArmId: armRes.body.id,
+          guardianFirstName: 'Parent',
+          guardianLastName: 'Subject',
+          guardianRelationship: 'FATHER',
         })
         .expect(201);
 

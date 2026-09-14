@@ -2,6 +2,7 @@ import { ConflictException, ForbiddenException, Injectable, NotFoundException } 
 import { AcademicSessionsService } from '../academic-sessions/academic-sessions.service';
 import { AuditService } from '../audit/audit.service';
 import { ClassesService } from '../classes/classes.service';
+import { GradingScaleService } from '../grading-scale/grading-scale.service';
 import { NotificationService } from '../notifications/notification.service';
 import { StudentsService } from '../students/students.service';
 import { RequestContextService } from '../../common/context/request-context';
@@ -16,6 +17,7 @@ export class ResultsService {
     private readonly academicSessions: AcademicSessionsService,
     private readonly students: StudentsService,
     private readonly classes: ClassesService,
+    private readonly gradingScale: GradingScaleService,
     private readonly audit: AuditService,
     private readonly notifications: NotificationService,
     private readonly requestContext: RequestContextService,
@@ -28,6 +30,11 @@ export class ResultsService {
     await this.prisma.db.subject.findUniqueOrThrow({ where: { id: dto.subjectId } });
 
     const totalScore = this.computeTotal(dto.continuousAssessmentScore, dto.examScore);
+    // Computed once, against whatever grade bands exist right now, and
+    // stored — see GradingScaleService.computeGrade's doc comment for why
+    // this is never recalculated later. null (no band configured, or none
+    // covers this score) is an honest "ungraded", not an error.
+    const grade = totalScore === undefined ? null : await this.gradingScale.computeGrade(totalScore);
 
     return this.prisma.db.result.create({
       data: tenantScopedCreate({
@@ -38,6 +45,7 @@ export class ResultsService {
         continuousAssessmentScore: dto.continuousAssessmentScore,
         examScore: dto.examScore,
         totalScore,
+        grade,
         teacherComment: dto.teacherComment,
         status: 'DRAFT' as const,
         enteredById: this.requireUserId(),

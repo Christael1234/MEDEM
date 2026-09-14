@@ -1,5 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { AuditService } from '../audit/audit.service';
+import { DEFAULT_PORTAL_PASSWORD, generateLoginEmail } from '../../common/auth/login-credentials';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { RequestContextService } from '../../common/context/request-context';
 import { tenantScopedCreate } from '../../common/prisma/tenant-scoped-create';
@@ -14,16 +16,63 @@ export class GuardiansService {
     private readonly requestContext: RequestContextService,
   ) {}
 
-  create(dto: CreateGuardianDto) {
-    return this.prisma.db.guardian.create({
-      data: tenantScopedCreate({
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-        email: dto.email,
-        phone: dto.phone,
-        address: dto.address,
-      }),
+  /** Backs the "search existing parent" picker on student creation — e.g.
+   * finding a sibling's parent already on file instead of creating a
+   * duplicate guardian record for the same person. Requires a real query;
+   * an empty/near-empty one intentionally returns nothing rather than the
+   * whole guardian list. */
+  search(query?: string) {
+    const q = (query ?? '').trim();
+    if (q.length < 2) return [];
+    return this.prisma.db.guardian.findMany({
+      where: {
+        OR: [
+          { firstName: { contains: q, mode: 'insensitive' } },
+          { lastName: { contains: q, mode: 'insensitive' } },
+          { phone: { contains: q } },
+        ],
+      },
+      orderBy: { lastName: 'asc' },
+      take: 10,
     });
+  }
+
+  /** Creates a real portal login alongside the Guardian profile — same
+   * pattern as StaffProfilesService.createTeacher / StudentsService.create,
+   * so a parent added by the school can sign in immediately rather than
+   * needing a separate account-provisioning step. */
+  async create(dto: CreateGuardianDto) {
+    const tenantId = this.requestContext.getTenantId();
+    if (!tenantId) throw new ForbiddenException();
+
+    const loginEmail = await generateLoginEmail(this.prisma, tenantId, dto.firstName, dto.lastName, 'parent');
+    const passwordHash = await bcrypt.hash(DEFAULT_PORTAL_PASSWORD, 12);
+
+    const { guardian, user } = await this.prisma.db.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: { role: 'PARENT', email: loginEmail, passwordHash, firstName: dto.firstName, lastName: dto.lastName },
+      });
+      const guardian = await tx.guardian.create({
+        data: tenantScopedCreate({
+          userId: user.id,
+          firstName: dto.firstName,
+          lastName: dto.lastName,
+          email: dto.email,
+          phone: dto.phone,
+          address: dto.address,
+        }),
+      });
+      return { guardian, user };
+    });
+
+    await this.audit.log({
+      action: 'GUARDIAN_CREATED',
+      entityType: 'Guardian',
+      entityId: guardian.id,
+      after: { loginEmail: user.email },
+    });
+
+    return { ...guardian, loginCredentials: { email: user.email, password: DEFAULT_PORTAL_PASSWORD } };
   }
 
   async link(dto: LinkGuardianDto) {
@@ -64,7 +113,15 @@ export class GuardiansService {
 
     const guardian = await this.prisma.db.guardian.findFirst({
       where: { userId },
-      include: { studentLinks: { include: { student: true } } },
+      include: {
+        studentLinks: {
+          include: {
+            student: {
+              include: { currentClassArm: { include: { schoolClass: { select: { name: true } } } } },
+            },
+          },
+        },
+      },
     });
     return guardian?.studentLinks ?? [];
   }
