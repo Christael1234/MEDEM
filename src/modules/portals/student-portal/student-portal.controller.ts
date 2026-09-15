@@ -1,12 +1,14 @@
-import { Body, Controller, ForbiddenException, Get, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Post } from '@nestjs/common';
 import { Roles } from '../../../common/rbac/decorators/roles.decorator';
 import { RequestContextService } from '../../../common/context/request-context';
 import { PrismaService } from '../../../common/prisma/prisma.service';
+import { AcademicSessionsService } from '../../academic-sessions/academic-sessions.service';
 import { AssignmentsService } from '../../assignments/assignments.service';
 import { AttendanceService } from '../../attendance/attendance.service';
 import { ClassesService } from '../../classes/classes.service';
 import { ResultsService } from '../../results/results.service';
 import { RequestStreamChangeDto } from '../../students/dto/request-stream-change.dto';
+import { SetSubjectSelectionDto } from '../../students/dto/set-subject-selection.dto';
 import { StudentsService } from '../../students/students.service';
 import { TimetableService } from '../../timetable/timetable.service';
 
@@ -28,6 +30,7 @@ export class StudentPortalController {
     private readonly timetable: TimetableService,
     private readonly students: StudentsService,
     private readonly classes: ClassesService,
+    private readonly academicSessions: AcademicSessionsService,
   ) {}
 
   @Roles('STUDENT')
@@ -108,31 +111,59 @@ export class StudentPortalController {
     if (!userId) throw new ForbiddenException();
     const me = await this.prisma.db.student.findUniqueOrThrow({
       where: { userId },
-      select: { currentClassArmId: true, stream: true },
+      include: { currentClassArm: { include: { schoolClass: { select: { id: true, level: true } } } } },
     });
-    if (!me.currentClassArmId) return [];
-
-    // TeacherSubjectAssignment is keyed by SchoolClass, not ClassArm:
-    // resolve the parent class first (same pattern as
-    // ClassesService.assertTeacherCanActOnArm).
-    const schoolClass = await this.prisma.db.schoolClass.findFirstOrThrow({
-      where: { arms: { some: { id: me.currentClassArmId } } },
-      select: { id: true },
-    });
+    if (!me.currentClassArm) return [];
+    const schoolClass = me.currentClassArm.schoolClass;
 
     const assignments = await this.prisma.db.teacherSubjectAssignment.findMany({
       where: { schoolClassId: schoolClass.id },
       include: {
-        subject: { select: { name: true, streams: true } },
+        subject: { select: { id: true, name: true, streams: true } },
         staffProfile: { include: { user: { select: { firstName: true, lastName: true } } } },
       },
     });
 
-    // A Senior Secondary student who's picked a stream only sees subjects
-    // that apply to it. A subject with no streams tagged is "any stream"
-    // (same convention as an empty `levels`), so it still shows either way.
+    // Senior Secondary: subject list comes from what the student actually
+    // selected this session (StudentSubjectSelection), not "everything
+    // assigned to the class" — this is what makes selection real rather
+    // than cosmetic. Every other level keeps the class-wide list.
+    if (schoolClass.level === 'SENIOR_SECONDARY') {
+      const currentSession = await this.academicSessions.getCurrentSession();
+      if (!currentSession) return [];
+      const selection = await this.students.getSubjectSelection(me.id, currentSession.id);
+      const assignmentBySubjectId = new Map(assignments.map((a) => [a.subject.id, a]));
+      return selection.map((s) => assignmentBySubjectId.get(s.subjectId) ?? { subject: s.subject, staffProfile: null });
+    }
+
+    // A subject with no streams tagged is "any stream" (same convention
+    // as an empty `gradeTiers`), so it still shows either way.
     if (!me.stream) return assignments;
     return assignments.filter((a) => !a.subject.streams.length || a.subject.streams.includes(me.stream!));
+  }
+
+  @Roles('STUDENT')
+  @Get('subject-options')
+  getSubjectOptions() {
+    return this.students.getSubjectOptions();
+  }
+
+  @Roles('STUDENT')
+  @Get('subject-selection')
+  async mySubjectSelection() {
+    const studentId = await this.myStudentId();
+    const currentSession = await this.academicSessions.getCurrentSession();
+    if (!currentSession) return [];
+    return this.students.getSubjectSelection(studentId, currentSession.id);
+  }
+
+  @Roles('STUDENT')
+  @Post('subject-selection')
+  async setMySubjectSelection(@Body() dto: SetSubjectSelectionDto) {
+    const studentId = await this.myStudentId();
+    const currentSession = await this.academicSessions.getCurrentSession();
+    if (!currentSession) throw new BadRequestException('No academic session is currently active');
+    return this.students.setSubjectSelection(studentId, currentSession.id, dto.tradeSubjectId, dto.electiveSubjectIds);
   }
 
   private async myStudentId(): Promise<string> {

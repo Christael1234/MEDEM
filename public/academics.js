@@ -418,7 +418,7 @@
     const addClassButton = canManageClasses ? '<button class="new-button" data-modal="new-class">+ Add class</button>' : '';
     const addSubjectButton = canManageClasses ? '<button class="new-button" data-modal="new-subject">+ Add subject</button>' : '';
     const addGradeButton = currentRole === 'proprietor' ? '<button class="new-button" data-modal="new-grade-band">+ Add grade</button>' : '';
-    return `<section class="page workspace-page" id="academics"><div class="page-heading"><div><p class="eyebrow">Academic management</p><h1>${label}</h1><p class="subtitle">Timetable, marks entry and result approval for every class.</p></div><button class="new-button" data-goto-tab="marks">+ Enter marks</button></div><div class="screen-kpis">${kpis.map((s, i) => `<article class="screen-kpi"><p>${s[0]}</p><strong${s[3] ? ` id="${s[3]}"` : ''}>${s[1]}</strong><small class="${i === 1 || i === 2 ? 'warn' : ''}">${s[2]}</small></article>`).join('')}</div><div class="screen-tabs" data-tabs><button class="active" data-tab="timetable">Timetable</button><button data-tab="marks">Marks entry</button><button data-tab="results">Result approval</button><button data-tab="scale">Grading scale</button><button data-tab="classes">Classes</button><button data-tab="subjects">Subjects</button></div><div data-tab-panel="timetable" class="tab-panel visible"><section class="data-card"><p class="tt-hint">Generate builds a conflict-free weekly schedule for every class from the subject teachers already assigned; a teacher is never double-booked across classes.</p><div id="academicsTimetableContainer"><p class="modal-sub">Loading…</p></div></section></div><div data-tab-panel="marks" class="tab-panel"><section class="data-card"><div class="data-toolbar"><span class="tt-class-label">Drafts not yet submitted</span></div><table class="data-table"><thead><tr><th>Student</th><th>Subject</th><th>Term</th><th>CA</th><th>Exam</th><th>Total</th><th>Grade</th></tr></thead><tbody id="realMarksEntryBody"><tr><td colspan="7">Sign in to load marks…</td></tr></tbody></table></section></div><div data-tab-panel="results" class="tab-panel"><section class="data-card"><table class="data-table"><thead><tr><th>Student</th><th>Subject</th><th>Term</th><th>Total</th><th>Grade</th><th>Status</th><th></th></tr></thead><tbody id="realResultApprovalsBody"><tr><td colspan="7">Sign in to load results…</td></tr></tbody></table></section></div><div data-tab-panel="scale" class="tab-panel"><section class="data-card"><div class="data-toolbar"><span class="tt-class-label">Results are auto-graded against this scale</span>${addGradeButton}</div><table class="data-table"><thead><tr><th>Grade</th><th>Range</th><th>Meaning</th><th></th></tr></thead><tbody id="realGradingScaleBody"><tr><td colspan="4">Sign in to load the grading scale…</td></tr></tbody></table></section></div><div data-tab-panel="classes" class="tab-panel"><section class="data-card"><div class="data-toolbar"><span class="tt-class-label">Filter by level</span><select id="classesLevelFilter" class="level-filter-select" aria-label="Filter classes by level"><option value="">All levels</option>${Object.entries(LEVEL_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>${addClassButton}</div><table class="data-table"><thead><tr><th>Class</th><th>Level</th><th>Campus</th><th>Arms</th><th></th></tr></thead><tbody id="realClassesBody"><tr><td colspan="5">Sign in to load classes…</td></tr></tbody></table></section></div><div data-tab-panel="subjects" class="tab-panel"><section class="data-card"><div class="data-toolbar"><span class="tt-class-label">Filter by level</span><select id="subjectsLevelFilter" class="level-filter-select" aria-label="Filter subjects by level"><option value="">All levels</option>${Object.entries(LEVEL_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>${addSubjectButton}</div><table class="data-table"><thead><tr><th>Subject</th><th>Code</th><th>Levels</th><th>Stream</th></tr></thead><tbody id="realSubjectsBody"><tr><td colspan="4">Sign in to load subjects…</td></tr></tbody></table></section></div></section>`;
+    return `<section class="page workspace-page" id="academics"><div class="page-heading"><div><p class="eyebrow">Academic management</p><h1>${label}</h1><p class="subtitle">Timetable, marks entry and result approval for every class.</p></div><button class="new-button" data-goto-tab="marks">+ Enter marks</button></div><div class="screen-kpis">${kpis.map((s, i) => `<article class="screen-kpi"><p>${s[0]}</p><strong${s[3] ? ` id="${s[3]}"` : ''}>${s[1]}</strong><small class="${i === 1 || i === 2 ? 'warn' : ''}">${s[2]}</small></article>`).join('')}</div><div class="screen-tabs" data-tabs><button class="active" data-tab="timetable">Timetable</button><button data-tab="marks">Marks entry</button><button data-tab="results">Result approval</button><button data-tab="scale">Grading scale</button><button data-tab="classes">Classes</button><button data-tab="subjects">Subjects</button></div><div data-tab-panel="timetable" class="tab-panel visible"><section class="data-card"><p class="tt-hint">Generate builds a conflict-free weekly schedule for every class from the subject teachers already assigned; a teacher is never double-booked across classes.</p><div id="academicsTimetableContainer"><p class="modal-sub">Loading…</p></div></section></div><div data-tab-panel="marks" class="tab-panel"><section class="data-card"><div class="data-toolbar"><span class="tt-class-label">Drafts not yet submitted</span></div><table class="data-table"><thead><tr><th>Student</th><th>Subject</th><th>Term</th><th>CA</th><th>Exam</th><th>Total</th><th>Grade</th></tr></thead><tbody id="realMarksEntryBody"><tr><td colspan="7">Sign in to load marks…</td></tr></tbody></table></section></div><div data-tab-panel="results" class="tab-panel"><section class="data-card"><table class="data-table"><thead><tr><th>Student</th><th>Subject</th><th>Term</th><th>Total</th><th>Grade</th><th>Status</th><th></th></tr></thead><tbody id="realResultApprovalsBody"><tr><td colspan="7">Sign in to load results…</td></tr></tbody></table></section></div><div data-tab-panel="scale" class="tab-panel"><section class="data-card"><div class="data-toolbar"><span class="tt-class-label">Results are auto-graded against this scale</span>${addGradeButton}</div><table class="data-table"><thead><tr><th>Grade</th><th>Range</th><th>Meaning</th><th></th></tr></thead><tbody id="realGradingScaleBody"><tr><td colspan="4">Sign in to load the grading scale…</td></tr></tbody></table></section></div><div data-tab-panel="classes" class="tab-panel"><section class="data-card"><div class="data-toolbar"><span class="tt-class-label">Filter by grade band</span><select id="classesLevelFilter" class="level-filter-select" aria-label="Filter classes by grade band"><option value="">All grade bands</option>${Object.entries(GRADE_TIER_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>${addClassButton}</div><table class="data-table"><thead><tr><th>Class</th><th>Grade band</th><th>Campus</th><th>Arms</th><th></th></tr></thead><tbody id="realClassesBody"><tr><td colspan="5">Sign in to load classes…</td></tr></tbody></table></section></div><div data-tab-panel="subjects" class="tab-panel"><section class="data-card"><div class="data-toolbar"><span class="tt-class-label">Filter by grade band</span><select id="subjectsLevelFilter" class="level-filter-select" aria-label="Filter subjects by grade band"><option value="">All grade bands</option>${Object.entries(GRADE_TIER_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>${addSubjectButton}</div><table class="data-table"><thead><tr><th>Subject</th><th>Code</th><th>Grade bands</th><th>Stream</th><th></th></tr></thead><tbody id="realSubjectsBody"><tr><td colspan="5">Sign in to load subjects…</td></tr></tbody></table></section></div></section>`;
   }
   function renderAcademicsPanel() {
     const el = document.getElementById('academics');
@@ -446,9 +446,9 @@
     const tbody = document.getElementById('realClassesBody');
     if (!tbody) return;
     const filterSelect = document.getElementById('classesLevelFilter');
-    const level = filterSelect ? filterSelect.value : '';
-    const classes = level ? lastLoadedClasses.filter((c) => c.level === level) : lastLoadedClasses;
-    tbody.innerHTML = classes.length ? classes.map((c) => `<tr><td>${c.name}</td><td>${LEVEL_LABELS[c.level] || c.level}</td><td>${lastCampusNameById[c.campusId] || '—'}</td><td>${(c.arms || []).map((a) => a.name).join(', ') || '—'}</td><td class="row-action"><button class="outline-button" data-view-class="${c.id}">View</button></td></tr>`).join('') : `<tr><td colspan="5">No classes${level ? ' at this level' : ''} yet.</td></tr>`;
+    const gradeTier = filterSelect ? filterSelect.value : '';
+    const classes = gradeTier ? lastLoadedClasses.filter((c) => c.gradeTier === gradeTier) : lastLoadedClasses;
+    tbody.innerHTML = classes.length ? classes.map((c) => `<tr><td>${c.name}</td><td>${GRADE_TIER_LABELS[c.gradeTier] || c.gradeTier}</td><td>${lastCampusNameById[c.campusId] || '—'}</td><td>${(c.arms || []).map((a) => a.name).join(', ') || '—'}</td><td class="row-action"><button class="outline-button" data-view-class="${c.id}">View</button></td></tr>`).join('') : `<tr><td colspan="5">No classes${gradeTier ? ' in this grade band' : ''} yet.</td></tr>`;
   }
   async function openClassDetailModal(classId) {
     let cls, staff = [], allClasses = [];
@@ -489,7 +489,7 @@
 
     const otherClasses = allClasses.filter((c) => c.id !== classId);
     const promotesToHtml = canManage ? `<div class="inline-edit-row"><select id="promotesToSelect" aria-label="Promotes to"><option value="">— None (students graduate) —</option>${otherClasses.map((c) => `<option value="${c.id}" ${cls.promotesToClassId === c.id ? 'selected' : ''}>${c.name}</option>`).join('')}</select><button type="button" class="outline-button" data-save-promotes-to="${classId}">Save</button></div>` : `<p class="modal-sub" style="margin:0">${cls.promotesToClass ? cls.promotesToClass.name : 'None — this is the final class (students graduate).'}</p>`;
-    const levelHtml = canManage ? `<div class="inline-edit-row"><select id="levelSelect" aria-label="Level">${Object.entries(LEVEL_LABELS).map(([k, v]) => `<option value="${k}" ${cls.level === k ? 'selected' : ''}>${v}</option>`).join('')}</select><button type="button" class="outline-button" data-save-level="${classId}">Save</button></div>` : `<p class="modal-sub" style="margin:0">${LEVEL_LABELS[cls.level] || cls.level}</p>`;
+    const levelHtml = canManage ? `<div class="inline-edit-row"><select id="levelSelect" aria-label="Grade band">${Object.entries(GRADE_TIER_LABELS).map(([k, v]) => `<option value="${k}" ${cls.gradeTier === k ? 'selected' : ''}>${v}</option>`).join('')}</select><button type="button" class="outline-button" data-save-level="${classId}">Save</button></div>` : `<p class="modal-sub" style="margin:0">${GRADE_TIER_LABELS[cls.gradeTier] || cls.gradeTier}</p>`;
 
     window.__renameClassSubmit = async (e) => {
       e.preventDefault();
@@ -503,7 +503,7 @@
     };
     window.SchoolOS.openModal(`<p class="eyebrow">Academics</p><h2>Class details</h2>
       ${canManage ? `<form class="inline-edit-row" onsubmit="__renameClassSubmit(event)"><input name="name" value="${cls.name}" aria-label="Class name"><button type="submit" class="outline-button">Save</button></form>` : `<p class="modal-sub">${cls.name}</p>`}
-      <div class="detail-section"><p class="eyebrow">Level</p>${levelHtml}</div>
+      <div class="detail-section"><p class="eyebrow">Grade band</p>${levelHtml}</div>
       <div class="detail-section"><p class="eyebrow">Promotes to (next class, end of session)</p>${promotesToHtml}</div>
       <div class="detail-section"><p class="eyebrow">Arms</p>${armsHtml}${canManage ? `<button class="outline-button" style="margin-top:10px" data-add-arm="${classId}">+ Add arm</button>` : ''}</div>
       <div class="detail-section"><p class="eyebrow">Subject teachers</p>${subjectsHtml}</div>
@@ -521,7 +521,7 @@
   }
   async function saveClassLevel(classId) {
     const select = document.getElementById('levelSelect');
-    try { await window.SchoolOS.api('/classes/' + classId, { method: 'PATCH', body: JSON.stringify({ level: select.value }) }); window.SchoolOS.toast('Level updated'); loadRealClasses(); openClassDetailModal(classId); } catch (err) { window.SchoolOS.toast(`Could not update level (${err.message})`); }
+    try { await window.SchoolOS.api('/classes/' + classId, { method: 'PATCH', body: JSON.stringify({ gradeTier: select.value }) }); window.SchoolOS.toast('Grade band updated'); loadRealClasses(); openClassDetailModal(classId); } catch (err) { window.SchoolOS.toast(`Could not update grade band (${err.message})`); }
   }
   async function saveClassPromotesTo(classId) {
     const select = document.getElementById('promotesToSelect');
@@ -611,8 +611,76 @@
     } catch (err) { window.SchoolOS.toast(`Could not update class teacher (${err.message})`); }
   }
   const LEVEL_LABELS = { NURSERY: 'Nursery', PRIMARY: 'Primary', JUNIOR_SECONDARY: 'Junior Secondary', SENIOR_SECONDARY: 'Senior Secondary' };
-  const levelByLabel = Object.fromEntries(Object.entries(LEVEL_LABELS).map(([k, v]) => [v, k]));
+  // GradeTier is the finer-grained scoping field (splits Primary into
+  // Lower/Upper bands, matching the Nigerian curriculum's different core
+  // subject lists for Primary 1-3 vs 4-6); SchoolClass.level is derived
+  // from it server-side, never set directly (see ClassesService).
+  const GRADE_TIER_LABELS = { NURSERY: 'Nursery', LOWER_PRIMARY: 'Primary 1–3', UPPER_PRIMARY: 'Primary 4–6', JUNIOR_SECONDARY: 'Junior Secondary', SENIOR_SECONDARY: 'Senior Secondary' };
+  const gradeTierByLabel = Object.fromEntries(Object.entries(GRADE_TIER_LABELS).map(([k, v]) => [v, k]));
   const STREAM_LABELS = { SCIENCE: 'Science', ART: 'Art' };
+
+  // ---- Student self-service: Senior Secondary subject selection ----
+  let mySubjectsEditMode = false;
+  let lastSubjectOptions = null;
+  async function renderMySubjectsRow(p) {
+    if (!p.stream) {
+      return '<div class="detail-section"><p class="eyebrow">My Subjects</p><p class="modal-sub" style="margin:0">Set your stream first — subject selection depends on it.</p></div>';
+    }
+    let selection = [];
+    try { selection = await window.SchoolOS.api('/portal/student/subject-selection'); } catch (err) { /* treat as not-yet-selected */ }
+    if (selection.length && !mySubjectsEditMode) {
+      const names = selection.map((s) => s.subject.name).sort().join(', ');
+      return `<div class="detail-section"><p class="eyebrow">My Subjects (${selection.length})</p><p class="modal-sub" style="margin:0 0 8px">${names}</p><button type="button" class="outline-button" id="changeSubjectSelectionBtn">Change selection</button></div>`;
+    }
+    try { lastSubjectOptions = await window.SchoolOS.api('/portal/student/subject-options'); } catch (err) {
+      return `<div class="detail-section"><p class="eyebrow">My Subjects</p><p class="modal-sub" style="margin:0">Could not load subject options (${err.message})</p></div>`;
+    }
+    const options = lastSubjectOptions;
+    const selectedIds = new Set(selection.map((s) => s.subjectId));
+    const electives = options.electives[p.stream] || [];
+    const compulsoryNames = options.compulsory.map((s) => s.name).join(', ') || 'None configured yet';
+    const tradeOptionsHtml = options.coreTrade.map((s) => `<option value="${s.id}" ${selectedIds.has(s.id) ? 'selected' : ''}>${s.name}</option>`).join('');
+    const electiveCheckboxesHtml = electives.map((s) => `<label class="checkbox-option"><input type="checkbox" name="mySubjectElective" value="${s.id}" ${selectedIds.has(s.id) ? 'checked' : ''}>${s.name}</label>`).join('');
+    return `<div class="detail-section"><p class="eyebrow">My Subjects</p>
+      <p class="modal-sub" style="margin:0 0 8px">Compulsory (always included): ${compulsoryNames}</p>
+      <div class="form-field"><label>Trade subject</label><select id="mySubjectTradeSelect" aria-label="Trade subject"><option value="">— Choose —</option>${tradeOptionsHtml}</select></div>
+      <div class="form-field"><label>${STREAM_LABELS[p.stream]} electives</label><div class="checkbox-group" id="mySubjectElectivesGroup">${electiveCheckboxesHtml || '<p class="modal-sub" style="margin:0">None configured yet.</p>'}</div></div>
+      <p class="modal-sub" id="mySubjectsCounter" style="margin:0 0 8px"></p>
+      <div class="form-actions"><button type="button" class="new-button" id="submitSubjectSelectionBtn">Save selection</button></div>
+    </div>`;
+  }
+  function updateMySubjectsCounter() {
+    const counter = document.getElementById('mySubjectsCounter');
+    if (!counter || !lastSubjectOptions) return;
+    const tradeSelect = document.getElementById('mySubjectTradeSelect');
+    const checkedCount = document.querySelectorAll('#mySubjectElectivesGroup input:checked').length;
+    const total = lastSubjectOptions.compulsory.length + (tradeSelect && tradeSelect.value ? 1 : 0) + checkedCount;
+    counter.textContent = total >= 8 && total <= 9 ? `${total} of 8-9 selected ✓` : `${total} of 8-9 selected — adjust to reach 8 or 9`;
+  }
+  function bindMySubjectsHandlers() {
+    const changeBtn = document.getElementById('changeSubjectSelectionBtn');
+    if (changeBtn) changeBtn.addEventListener('click', () => { mySubjectsEditMode = true; loadRealStudentPortalData(); });
+
+    const tradeSelect = document.getElementById('mySubjectTradeSelect');
+    const electivesGroup = document.getElementById('mySubjectElectivesGroup');
+    const submitBtn = document.getElementById('submitSubjectSelectionBtn');
+    if (!submitBtn) return;
+    if (tradeSelect) tradeSelect.addEventListener('change', updateMySubjectsCounter);
+    if (electivesGroup) electivesGroup.addEventListener('change', updateMySubjectsCounter);
+    updateMySubjectsCounter();
+
+    submitBtn.addEventListener('click', async () => {
+      const tradeSubjectId = tradeSelect ? tradeSelect.value : '';
+      const electiveSubjectIds = Array.from(document.querySelectorAll('#mySubjectElectivesGroup input:checked')).map((el) => el.value);
+      if (!tradeSubjectId) { window.SchoolOS.toast('Choose a trade subject'); return; }
+      try {
+        await window.SchoolOS.api('/portal/student/subject-selection', { method: 'POST', body: JSON.stringify({ tradeSubjectId, electiveSubjectIds }) });
+        mySubjectsEditMode = false;
+        window.SchoolOS.toast('Subjects saved');
+        loadRealStudentPortalData();
+      } catch (err) { window.SchoolOS.toast(`Could not save subjects (${err.message})`); }
+    });
+  }
 
   async function openNewClassModal() {
     let campuses = [];
@@ -623,12 +691,12 @@
       eyebrow: 'Academics', title: 'Add class', sub: 'e.g. Nursery 1, Primary 3, JSS 2, SS1.',
       fields: [
         { name: 'name', label: 'Class name', placeholder: 'e.g. JSS 3' },
-        { name: 'level', label: 'Level', type: 'select', options: Object.values(LEVEL_LABELS) },
+        { name: 'level', label: 'Grade band', type: 'select', options: Object.values(GRADE_TIER_LABELS) },
         { name: 'campus', label: 'Campus', type: 'select', options: campuses.map((c) => c.name) },
       ],
       submitLabel: 'Add class',
       onSubmit: async (d) => {
-        const payload = { campusId: campusByName[d.campus], name: (d.name || '').trim(), level: levelByLabel[d.level] };
+        const payload = { campusId: campusByName[d.campus], name: (d.name || '').trim(), gradeTier: gradeTierByLabel[d.level] };
         if (!payload.name || !payload.campusId) { window.SchoolOS.toast('Class name and campus are required'); return; }
         try { await window.SchoolOS.api('/classes', { method: 'POST', body: JSON.stringify(payload) }); window.SchoolOS.toast(`${payload.name} added`); loadRealClasses(); } catch (err) { window.SchoolOS.toast(`Could not add class (${err.message})`); }
       },
@@ -678,28 +746,66 @@
     const tbody = document.getElementById('realSubjectsBody');
     if (!tbody) return;
     const filterSelect = document.getElementById('subjectsLevelFilter');
-    const level = filterSelect ? filterSelect.value : '';
-    const subjects = level ? lastLoadedSubjects.filter((s) => s.levels.includes(level)) : lastLoadedSubjects;
-    const streamsCell = (s) => s.streams && s.streams.length ? s.streams.map((st) => STREAM_LABELS[st] || st).join(', ') : 'All streams';
-    tbody.innerHTML = subjects.length ? subjects.map((s) => `<tr><td>${s.name}</td><td>${s.code || '—'}</td><td>${s.levels.length ? s.levels.map((l) => LEVEL_LABELS[l] || l).join(', ') : '—'}</td><td>${s.levels.includes('SENIOR_SECONDARY') ? streamsCell(s) : '—'}</td></tr>`).join('') : `<tr><td colspan="4">No subjects${level ? ' at this level' : ''} yet.</td></tr>`;
+    const gradeTier = filterSelect ? filterSelect.value : '';
+    const subjects = gradeTier ? lastLoadedSubjects.filter((s) => s.gradeTiers.includes(gradeTier)) : lastLoadedSubjects;
+    const streamsCell = (s) => s.isCompulsory ? 'Compulsory' : s.isCoreTrade ? 'Core trade' : (s.streams && s.streams.length ? s.streams.map((st) => STREAM_LABELS[st] || st).join(', ') : '—');
+    const canManage = currentRole === 'proprietor' || currentRole === 'principal';
+    const actionsCell = (s) => canManage ? `<button class="outline-button" data-edit-subject="${s.id}">Edit</button> <button class="outline-button" data-delete-subject="${s.id}" data-subject-name="${s.name}">Delete</button>` : '';
+    tbody.innerHTML = subjects.length ? subjects.map((s) => `<tr><td>${s.name}</td><td>${s.code || '—'}</td><td>${s.gradeTiers.length ? s.gradeTiers.map((l) => GRADE_TIER_LABELS[l] || l).join(', ') : '—'}</td><td>${s.gradeTiers.includes('SENIOR_SECONDARY') ? streamsCell(s) : '—'}</td><td class="row-action">${actionsCell(s)}</td></tr>`).join('') : `<tr><td colspan="5">No subjects${gradeTier ? ' in this grade band' : ''} yet.</td></tr>`;
+  }
+  const SUBJECT_TYPE_LABELS = { REGULAR: 'Regular (stream-specific)', COMPULSORY: 'Compulsory (every SS student)', CORE_TRADE: 'Core trade subject (student picks one)' };
+  const subjectTypeByLabel = Object.fromEntries(Object.entries(SUBJECT_TYPE_LABELS).map(([k, v]) => [v, k]));
+  const subjectTypeOf = (s) => s.isCompulsory ? 'COMPULSORY' : s.isCoreTrade ? 'CORE_TRADE' : 'REGULAR';
+  function openEditSubjectModal(id) {
+    const s = lastLoadedSubjects.find((x) => x.id === id);
+    if (!s) return;
+    window.SchoolOS.formModal({
+      eyebrow: 'Academics', title: `Edit ${s.name}`, sub: 'Which grade band(s) is this taught at? A regular Senior Secondary subject needs at least one stream (Science or Art) — only compulsory and core trade subjects can skip that.',
+      fields: [
+        { name: 'name', label: 'Subject name', value: s.name },
+        { name: 'code', label: 'Code (optional)', value: s.code || '' },
+        { name: 'levels', label: 'Grade bands', type: 'checkboxes', options: Object.entries(GRADE_TIER_LABELS).map(([k, v]) => ({ value: k, label: v })), value: s.gradeTiers },
+        { name: 'subjectType', label: 'Subject type', type: 'select', options: Object.values(SUBJECT_TYPE_LABELS), value: SUBJECT_TYPE_LABELS[subjectTypeOf(s)] },
+        { name: 'streams', label: 'Senior Secondary streams', type: 'checkboxes', options: Object.entries(STREAM_LABELS).map(([k, v]) => ({ value: k, label: v })), value: s.streams },
+      ],
+      submitLabel: 'Save',
+      onSubmit: async (d) => {
+        const name = (d.name || '').trim();
+        const gradeTiers = [].concat(d.levels || []).filter(Boolean);
+        const streams = [].concat(d.streams || []).filter(Boolean);
+        const subjectType = subjectTypeByLabel[d.subjectType] || 'REGULAR';
+        if (!name) { window.SchoolOS.toast('Subject name is required'); return; }
+        if (!gradeTiers.length) { window.SchoolOS.toast('Choose at least one grade band'); return; }
+        try {
+          await window.SchoolOS.api('/subjects/' + id, { method: 'PATCH', body: JSON.stringify({ name, code: d.code || undefined, gradeTiers, streams, isCompulsory: subjectType === 'COMPULSORY', isCoreTrade: subjectType === 'CORE_TRADE' }) });
+          window.SchoolOS.toast(`${name} updated`); loadRealSubjects();
+        } catch (err) { window.SchoolOS.toast(`Could not update subject (${err.message})`); }
+      },
+    });
+  }
+  async function deleteSubjectRow(id, name) {
+    if (!window.confirm(`Delete ${name}? This can't be undone, and only works if no results have been entered for it yet.`)) return;
+    try { await window.SchoolOS.api('/subjects/' + id, { method: 'DELETE' }); window.SchoolOS.toast(`${name} deleted`); loadRealSubjects(); } catch (err) { window.SchoolOS.toast(`Could not delete subject (${err.message})`); }
   }
   function openNewSubjectModal() {
     window.SchoolOS.formModal({
-      eyebrow: 'Academics', title: 'Add subject', sub: 'Which level(s) is this taught at? For Senior Secondary, you can also restrict it to Science or Art (leave blank for both).',
+      eyebrow: 'Academics', title: 'Add subject', sub: 'Which grade band(s) is this taught at? A regular Senior Secondary subject needs at least one stream (Science or Art) — only compulsory and core trade subjects can skip that.',
       fields: [
         { name: 'name', label: 'Subject name', placeholder: 'e.g. Further Mathematics' },
         { name: 'code', label: 'Code (optional)', placeholder: 'e.g. FMTH' },
-        { name: 'levels', label: 'Levels', type: 'checkboxes', options: Object.entries(LEVEL_LABELS).map(([k, v]) => ({ value: k, label: v })) },
-        { name: 'streams', label: 'Senior Secondary streams (optional)', type: 'checkboxes', options: Object.entries(STREAM_LABELS).map(([k, v]) => ({ value: k, label: v })) },
+        { name: 'levels', label: 'Grade bands', type: 'checkboxes', options: Object.entries(GRADE_TIER_LABELS).map(([k, v]) => ({ value: k, label: v })) },
+        { name: 'subjectType', label: 'Subject type', type: 'select', options: Object.values(SUBJECT_TYPE_LABELS), value: SUBJECT_TYPE_LABELS.REGULAR },
+        { name: 'streams', label: 'Senior Secondary streams', type: 'checkboxes', options: Object.entries(STREAM_LABELS).map(([k, v]) => ({ value: k, label: v })) },
       ],
       submitLabel: 'Add subject',
       onSubmit: async (d) => {
         const name = (d.name || '').trim();
-        const levels = [].concat(d.levels || []).filter(Boolean);
+        const gradeTiers = [].concat(d.levels || []).filter(Boolean);
         const streams = [].concat(d.streams || []).filter(Boolean);
+        const subjectType = subjectTypeByLabel[d.subjectType] || 'REGULAR';
         if (!name) { window.SchoolOS.toast('Subject name is required'); return; }
-        if (!levels.length) { window.SchoolOS.toast('Choose at least one level'); return; }
-        try { await window.SchoolOS.api('/subjects', { method: 'POST', body: JSON.stringify({ name, code: d.code || undefined, levels, streams }) }); window.SchoolOS.toast(`${name} added`); loadRealSubjects(); } catch (err) { window.SchoolOS.toast(`Could not add subject (${err.message})`); }
+        if (!gradeTiers.length) { window.SchoolOS.toast('Choose at least one grade band'); return; }
+        try { await window.SchoolOS.api('/subjects', { method: 'POST', body: JSON.stringify({ name, code: d.code || undefined, gradeTiers, streams, isCompulsory: subjectType === 'COMPULSORY', isCoreTrade: subjectType === 'CORE_TRADE' }) }); window.SchoolOS.toast(`${name} added`); loadRealSubjects(); } catch (err) { window.SchoolOS.toast(`Could not add subject (${err.message})`); }
       },
     });
   }
@@ -1447,13 +1553,18 @@
               : `<div class="modal-detail-row"><span>Switch stream</span><span class="inline-edit-row"><select id="requestStreamSelect" aria-label="Requested stream"><option value="">— Choose —</option>${Object.entries(STREAM_LABELS).filter(([k]) => k !== p.stream).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select><button type="button" class="outline-button" id="requestStreamSwitchBtn">Request switch</button></span></div>`;
           }
         }
-        profileCard.innerHTML = `<div class="modal-detail"><div class="modal-detail-row"><span>Name</span><strong>${p.firstName} ${p.lastName}</strong></div><div class="modal-detail-row"><span>Admission No.</span><strong>${p.admissionNo}</strong></div><div class="modal-detail-row"><span>Class</span><strong>${cls}</strong></div><div class="modal-detail-row"><span>Status</span><strong>${p.status}</strong></div><div class="modal-detail-row"><span>Gender</span><strong>${p.gender || '—'}</strong></div><div class="modal-detail-row"><span>Date of birth</span><strong>${p.dateOfBirth ? new Date(p.dateOfBirth).toDateString() : '—'}</strong></div><div class="modal-detail-row"><span>Guardian(s)</span><strong>${guardians}</strong></div>${streamRow}</div>`;
+        const photoHtml = p.photoUrl
+          ? `<img src="${p.photoUrl}" alt="" style="width:88px;height:88px;border-radius:50%;object-fit:cover;margin-bottom:16px">`
+          : `<span class="mini-avatar" style="width:88px;height:88px;font-size:26px;margin-bottom:16px">${window.SchoolOS.initialsOf(p.firstName + " " + p.lastName)}</span>`;
+        const mySubjectsRow = isSeniorSecondary ? await renderMySubjectsRow(p) : '';
+        profileCard.innerHTML = `<div class="modal-detail">${photoHtml}<div class="modal-detail-row"><span>Name</span><strong>${p.firstName} ${p.lastName}</strong></div><div class="modal-detail-row"><span>Admission No.</span><strong>${p.admissionNo}</strong></div><div class="modal-detail-row"><span>Class</span><strong>${cls}</strong></div><div class="modal-detail-row"><span>Status</span><strong>${p.status}</strong></div><div class="modal-detail-row"><span>Gender</span><strong>${p.gender || '—'}</strong></div><div class="modal-detail-row"><span>Date of birth</span><strong>${p.dateOfBirth ? new Date(p.dateOfBirth).toDateString() : '—'}</strong></div><div class="modal-detail-row"><span>Guardian(s)</span><strong>${guardians}</strong></div>${streamRow}${mySubjectsRow}</div>`;
         const requestBtn = document.getElementById('requestStreamSwitchBtn');
         if (requestBtn) requestBtn.addEventListener('click', async () => {
           const requestedStream = document.getElementById('requestStreamSelect').value;
           if (!requestedStream) { window.SchoolOS.toast('Choose a stream first'); return; }
           try { await window.SchoolOS.api('/portal/student/stream-requests', { method: 'POST', body: JSON.stringify({ requestedStream }) }); window.SchoolOS.toast('Switch request submitted, awaiting admin approval'); loadRealStudentPortalData(); } catch (err) { window.SchoolOS.toast(`Could not submit request (${err.message})`); }
         });
+        bindMySubjectsHandlers();
       } catch (err) { profileCard.innerHTML = `<p>Could not load profile (${err.message})</p>`; }
     }
     if (resultsBody) {
@@ -1537,6 +1648,8 @@
     if (publishBtn && window.confirm(`Publish ${publishBtn.dataset.studentName}'s ${publishBtn.dataset.subjectName} result? This makes it visible to the student and their parent(s).`)) publishRealResult(publishBtn.dataset.publishRealResult);
     const egb = e.target.closest('[data-edit-grade-band]'); if (egb) openEditGradeBandModal(egb.dataset.editGradeBand, egb.dataset.grade, egb.dataset.min, egb.dataset.max, egb.dataset.meaning);
     const dgb = e.target.closest('[data-delete-grade-band]'); if (dgb) deleteGradeBand(dgb.dataset.deleteGradeBand, dgb.dataset.grade);
+    const editSubj = e.target.closest('[data-edit-subject]'); if (editSubj) openEditSubjectModal(editSubj.dataset.editSubject);
+    const delSubj = e.target.closest('[data-delete-subject]'); if (delSubj) deleteSubjectRow(delSubj.dataset.deleteSubject, delSubj.dataset.subjectName);
     const genTt = e.target.closest('[data-generate-timetable]'); if (genTt) generateTimetableAndReload();
     const ttSettings = e.target.closest('[data-open-timetable-settings]'); if (ttSettings) openTimetableSettingsModal();
     const apAll = e.target.closest('[data-approve-all]'); if (apAll) bulkApproveAll();

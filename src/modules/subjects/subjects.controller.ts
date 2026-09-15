@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
-import { SchoolLevel, Stream } from '@prisma/client';
+import { GradeTier, Stream } from '@prisma/client';
 import { AllowAnyAuthenticatedRole } from '../../common/rbac/decorators/allow-any-role.decorator';
 import { Roles } from '../../common/rbac/decorators/roles.decorator';
 import { AssignTeacherDto } from './dto/assign-teacher.dto';
@@ -23,10 +23,17 @@ export class SubjectsController {
     return this.subjectsService.updateSubject(id, dto);
   }
 
+  @Roles('PROPRIETOR', 'PRINCIPAL')
+  @Delete('subjects/:id')
+  @HttpCode(204)
+  deleteSubject(@Param('id') id: string) {
+    return this.subjectsService.deleteSubject(id);
+  }
+
   @AllowAnyAuthenticatedRole()
   @Get('subjects')
-  listSubjects(@Query('level') level?: SchoolLevel, @Query('stream') stream?: Stream) {
-    return this.subjectsService.listSubjects(level, stream);
+  listSubjects(@Query('gradeTier') gradeTier?: GradeTier, @Query('stream') stream?: Stream) {
+    return this.subjectsService.listSubjects(gradeTier, stream);
   }
 
   @Roles('PROPRIETOR', 'PRINCIPAL')

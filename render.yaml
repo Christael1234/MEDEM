@@ -32,3 +32,12 @@ services:
         value: none
       - key: WHATSAPP_PROVIDER
         value: none
+      # sync: false means Render creates the var slot but never sets or
+      # overwrites its value from this file — fill it in by hand in the
+      # schoolos-api service's dashboard (Environment tab), not here.
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false

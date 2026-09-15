@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
-import { Prisma, SchoolLevel, Stream } from '@prisma/client';
+import { GradeTier, Prisma, Stream } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { tenantScopedCreate } from '../../common/prisma/tenant-scoped-create';
@@ -14,53 +14,117 @@ export class SubjectsService {
     private readonly audit: AuditService,
   ) {}
 
+  /** A Senior Secondary subject that's neither compulsory nor a core
+   * trade subject must declare its stream(s): that's what a student's
+   * elective picker (StudentsService.getSubjectOptions) filters on, so an
+   * unstreamed "regular" SS subject would be unreachable by any student. */
+  private assertStreamRequirement(gradeTiers: GradeTier[], streams: Stream[], isCompulsory: boolean, isCoreTrade: boolean, name: string): void {
+    if (isCompulsory && isCoreTrade) {
+      throw new BadRequestException(`${name} can't be both compulsory and a core trade subject`);
+    }
+    if (gradeTiers.includes('SENIOR_SECONDARY') && !isCompulsory && !isCoreTrade && !streams.length) {
+      throw new BadRequestException(`${name} needs at least one stream (Science or Art) — only compulsory and core trade subjects can skip this`);
+    }
+  }
+
   createSubject(dto: CreateSubjectDto) {
+    const streams = dto.streams ?? [];
+    const isCompulsory = dto.isCompulsory ?? false;
+    const isCoreTrade = dto.isCoreTrade ?? false;
+    this.assertStreamRequirement(dto.gradeTiers, streams, isCompulsory, isCoreTrade, dto.name);
     return this.prisma.db.subject.create({
-      data: tenantScopedCreate({ name: dto.name, code: dto.code, levels: dto.levels, streams: dto.streams ?? [] }),
+      data: tenantScopedCreate({ name: dto.name, code: dto.code, gradeTiers: dto.gradeTiers, streams, isCompulsory, isCoreTrade }),
     });
   }
 
   async updateSubject(id: string, dto: UpdateSubjectDto) {
     const before = await this.prisma.db.subject.findUniqueOrThrow({ where: { id } });
+    const gradeTiers = dto.gradeTiers ?? before.gradeTiers;
+    const streams = dto.streams ?? before.streams;
+    const isCompulsory = dto.isCompulsory ?? before.isCompulsory;
+    const isCoreTrade = dto.isCoreTrade ?? before.isCoreTrade;
+    this.assertStreamRequirement(gradeTiers, streams, isCompulsory, isCoreTrade, dto.name ?? before.name);
+
     const updated = await this.prisma.db.subject.update({
       where: { id },
-      data: { name: dto.name ?? undefined, code: dto.code ?? undefined, levels: dto.levels ?? undefined, streams: dto.streams ?? undefined },
+      data: {
+        name: dto.name ?? undefined,
+        code: dto.code ?? undefined,
+        gradeTiers: dto.gradeTiers ?? undefined,
+        streams: dto.streams ?? undefined,
+        isCompulsory: dto.isCompulsory ?? undefined,
+        isCoreTrade: dto.isCoreTrade ?? undefined,
+      },
     });
     await this.audit.log({
       action: 'SUBJECT_UPDATED',
       entityType: 'Subject',
       entityId: id,
-      before: { name: before.name, levels: before.levels, streams: before.streams },
-      after: { name: updated.name, levels: updated.levels, streams: updated.streams },
+      before: { name: before.name, gradeTiers: before.gradeTiers, streams: before.streams, isCompulsory: before.isCompulsory, isCoreTrade: before.isCoreTrade },
+      after: { name: updated.name, gradeTiers: updated.gradeTiers, streams: updated.streams, isCompulsory: updated.isCompulsory, isCoreTrade: updated.isCoreTrade },
     });
     return updated;
   }
 
-  /** Optional level/stream filters, e.g. the class-detail "add/reassign
+  /** Results are ledger-like (CLAUDE.md): a subject that already has any
+   * (draft or published) results attached can't be deleted out from under
+   * them — that would cascade-delete real academic records. Teacher
+   * assignments aren't historical in the same way, so those are removed
+   * (with their own audit trail, same as removeAssignment) before the
+   * subject itself goes. */
+  async deleteSubject(id: string) {
+    const subject = await this.prisma.db.subject.findUniqueOrThrow({ where: { id } });
+
+    const resultCount = await this.prisma.db.result.count({ where: { subjectId: id } });
+    if (resultCount > 0) {
+      throw new ConflictException(`${subject.name} has existing results and can't be deleted`);
+    }
+
+    const assignments = await this.prisma.db.teacherSubjectAssignment.findMany({ where: { subjectId: id } });
+    await this.prisma.db.teacherSubjectAssignment.deleteMany({ where: { subjectId: id } });
+    for (const a of assignments) {
+      await this.audit.log({
+        action: 'TEACHER_SUBJECT_UNASSIGNED',
+        entityType: 'TeacherSubjectAssignment',
+        entityId: a.id,
+        before: { staffProfileId: a.staffProfileId, schoolClassId: a.schoolClassId, subjectId: a.subjectId },
+      });
+    }
+
+    await this.prisma.db.subject.delete({ where: { id } });
+    await this.audit.log({
+      action: 'SUBJECT_DELETED',
+      entityType: 'Subject',
+      entityId: id,
+      before: { name: subject.name, gradeTiers: subject.gradeTiers, streams: subject.streams },
+    });
+  }
+
+  /** Optional gradeTier/stream filters, e.g. the class-detail "add/reassign
    * subject teacher" pickers ask for only the subjects taught at that
-   * class's level; a Senior Secondary student's stream further narrows
+   * class's grade tier; a Senior Secondary student's stream further narrows
    * which of those subjects apply to them. A subject with no streams
-   * configured is "any stream", same convention as an empty `levels`. */
-  listSubjects(level?: SchoolLevel, stream?: Stream) {
+   * configured is "any stream", same convention as an empty `gradeTiers`. */
+  listSubjects(gradeTier?: GradeTier, stream?: Stream) {
     return this.prisma.db.subject.findMany({
       where: {
-        levels: level ? { has: level } : undefined,
+        gradeTiers: gradeTier ? { has: gradeTier } : undefined,
         ...(stream ? { OR: [{ streams: { isEmpty: true } }, { streams: { has: stream } }] } : {}),
       },
       orderBy: { name: 'asc' },
     });
   }
 
-  /** A subject with no levels configured yet is treated as "any level":
-   * an empty array blocking every assignment would just make newly
+  /** A subject with no gradeTiers configured yet is treated as "any grade
+   * tier": an empty array blocking every assignment would just make newly
    * created subjects unusable until someone remembers to tag them. */
   private async assertSubjectAppliesToClassLevel(subjectId: string, schoolClassId: string): Promise<void> {
     const [subject, schoolClass] = await Promise.all([
       this.prisma.db.subject.findUniqueOrThrow({ where: { id: subjectId } }),
       this.prisma.db.schoolClass.findUniqueOrThrow({ where: { id: schoolClassId } }),
     ]);
-    if (subject.levels.length && !subject.levels.includes(schoolClass.level)) {
-      throw new BadRequestException(`${subject.name} isn’t configured for ${schoolClass.level.replace('_', ' ').toLowerCase()} classes`);
+    if (subject.gradeTiers.length && !subject.gradeTiers.includes(schoolClass.gradeTier)) {
+      throw new BadRequestException(`${subject.name} isn’t configured for ${schoolClass.gradeTier.replace('_', ' ').toLowerCase()} classes`);
     }
   }
 

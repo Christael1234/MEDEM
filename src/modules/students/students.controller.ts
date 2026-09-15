@@ -1,7 +1,22 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { StreamChangeRequestStatus, StudentStatus } from '@prisma/client';
 import { AllowAnyAuthenticatedRole } from '../../common/rbac/decorators/allow-any-role.decorator';
 import { Roles } from '../../common/rbac/decorators/roles.decorator';
+import { RequestContextService } from '../../common/context/request-context';
+import { AcademicSessionsService } from '../academic-sessions/academic-sessions.service';
+import { UploadsService } from '../uploads/uploads.service';
 import { BulkImportStudentsDto } from './dto/bulk-import-students.dto';
 import { BulkPromoteDto } from './dto/bulk-promote.dto';
 import { CreateStudentDto } from './dto/create-student.dto';
@@ -12,9 +27,17 @@ import { UpdateStudentDto } from './dto/update-student.dto';
 import { UpdateStudentStatusDto } from './dto/update-student-status.dto';
 import { StudentsService } from './students.service';
 
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/webp']);
+
 @Controller('students')
 export class StudentsController {
-  constructor(private readonly studentsService: StudentsService) {}
+  constructor(
+    private readonly studentsService: StudentsService,
+    private readonly uploads: UploadsService,
+    private readonly requestContext: RequestContextService,
+    private readonly academicSessions: AcademicSessionsService,
+  ) {}
 
   @Roles('PROPRIETOR', 'PRINCIPAL')
   @Post()
@@ -78,9 +101,33 @@ export class StudentsController {
   }
 
   @Roles('PROPRIETOR', 'PRINCIPAL')
+  @Post(':id/photo')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_IMAGE_BYTES } }))
+  async uploadPhoto(@Param('id') id: string, @UploadedFile() file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No file uploaded');
+    if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
+      throw new BadRequestException('Photo must be a PNG, JPEG, or WEBP image');
+    }
+    const tenantId = this.requestContext.getTenantId();
+    const { url } = await this.uploads.uploadImage(file.buffer, `schoolos/${tenantId}/student-photos`);
+    return this.studentsService.setPhoto(id, url);
+  }
+
+  @Roles('PROPRIETOR', 'PRINCIPAL')
   @Patch(':id/status')
   updateStatus(@Param('id') id: string, @Body() dto: UpdateStudentStatusDto) {
     return this.studentsService.updateStatus(id, dto.status);
+  }
+
+  // Read-only: admin visibility into a Senior Secondary student's current
+  // subject selection. Stays self-service on the student's own side (no
+  // admin-edit route) — see StudentsService.setSubjectSelection.
+  @Roles('PROPRIETOR', 'PRINCIPAL')
+  @Get(':id/subject-selection')
+  async getSubjectSelection(@Param('id') id: string) {
+    const currentSession = await this.academicSessions.getCurrentSession();
+    if (!currentSession) return [];
+    return this.studentsService.getSubjectSelection(id, currentSession.id);
   }
 
   @Roles('PROPRIETOR', 'PRINCIPAL')

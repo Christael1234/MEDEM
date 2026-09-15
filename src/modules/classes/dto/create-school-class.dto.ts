@@ -1,4 +1,4 @@
-import { SchoolLevel } from '@prisma/client';
+import { GradeTier } from '@prisma/client';
 import { IsEnum, IsInt, IsOptional, IsString } from 'class-validator';
 
 export class CreateSchoolClassDto {
@@ -8,8 +8,10 @@ export class CreateSchoolClassDto {
   @IsString()
   name!: string;
 
-  @IsEnum(SchoolLevel)
-  level!: SchoolLevel;
+  // SchoolLevel is derived from this (see ClassesService), never set
+  // directly, so the two fields can never disagree.
+  @IsEnum(GradeTier)
+  gradeTier!: GradeTier;
 
   @IsOptional()
   @IsInt()

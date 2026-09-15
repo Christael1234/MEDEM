@@ -201,13 +201,13 @@ describe('Tenant isolation & RBAC (e2e)', () => {
       const subjectRes = await request(app.getHttpServer())
         .post('/subjects')
         .set('Authorization', `Bearer ${tenantAProprietorToken}`)
-        .send({ name: `Subject ${suffix}`, levels: ['JUNIOR_SECONDARY'] })
+        .send({ name: `Subject ${suffix}`, gradeTiers: ['JUNIOR_SECONDARY'] })
         .expect(201);
 
       const classRes = await request(app.getHttpServer())
         .post('/classes')
         .set('Authorization', `Bearer ${tenantAProprietorToken}`)
-        .send({ campusId, name: `Class ${suffix}`, level: 'JUNIOR_SECONDARY' })
+        .send({ campusId, name: `Class ${suffix}`, gradeTier: 'JUNIOR_SECONDARY' })
         .expect(201);
 
       const armRes = await request(app.getHttpServer())

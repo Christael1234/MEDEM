@@ -30,6 +30,7 @@ import { StudentsModule } from './modules/students/students.module';
 import { SubjectsModule } from './modules/subjects/subjects.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { TimetableModule } from './modules/timetable/timetable.module';
+import { UploadsModule } from './modules/uploads/uploads.module';
 import { UsersModule } from './modules/users/users.module';
 
 @Module({
@@ -68,6 +69,7 @@ import { UsersModule } from './modules/users/users.module';
     CommunicationModule,
     TimetableModule,
     DocumentTemplatesModule,
+    UploadsModule,
     TeacherPortalModule,
     StudentPortalModule,
     ParentPortalModule,

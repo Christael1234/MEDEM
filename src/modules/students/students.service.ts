@@ -316,6 +316,21 @@ export class StudentsService {
     return student;
   }
 
+  async setPhoto(id: string, photoUrl: string) {
+    const before = await this.prisma.db.student.findUniqueOrThrow({ where: { id } });
+    const student = await this.prisma.db.student.update({ where: { id }, data: { photoUrl } });
+
+    await this.audit.log({
+      action: 'STUDENT_PHOTO_UPDATED',
+      entityType: 'Student',
+      entityId: id,
+      before: { photoUrl: before.photoUrl },
+      after: { photoUrl: student.photoUrl },
+    });
+
+    return student;
+  }
+
   /** Science/Art stream is only meaningful once a student is actually in
    * Senior Secondary: gated the same way promotion is gated on Third
    * Term, rather than letting a Nursery student get tagged by mistake.
@@ -464,6 +479,96 @@ export class StudentsService {
     });
 
     return this.prisma.db.streamChangeRequest.findUniqueOrThrow({ where: { id } });
+  }
+
+  /** Senior Secondary subject picker options: compulsory subjects (every
+   * student gets these automatically), core trade subjects (exactly one
+   * required), and electives split by stream — a student only ever sees
+   * the elective list matching their own Student.stream. */
+  async getSubjectOptions() {
+    const [compulsory, coreTrade, scienceElectives, artElectives] = await Promise.all([
+      this.prisma.db.subject.findMany({ where: { gradeTiers: { has: 'SENIOR_SECONDARY' }, isCompulsory: true }, orderBy: { name: 'asc' } }),
+      this.prisma.db.subject.findMany({ where: { gradeTiers: { has: 'SENIOR_SECONDARY' }, isCoreTrade: true }, orderBy: { name: 'asc' } }),
+      this.prisma.db.subject.findMany({ where: { gradeTiers: { has: 'SENIOR_SECONDARY' }, isCompulsory: false, isCoreTrade: false, streams: { has: 'SCIENCE' } }, orderBy: { name: 'asc' } }),
+      this.prisma.db.subject.findMany({ where: { gradeTiers: { has: 'SENIOR_SECONDARY' }, isCompulsory: false, isCoreTrade: false, streams: { has: 'ART' } }, orderBy: { name: 'asc' } }),
+    ]);
+    return { compulsory, coreTrade, electives: { SCIENCE: scienceElectives, ART: artElectives } };
+  }
+
+  getSubjectSelection(studentId: string, academicSessionId: string) {
+    return this.prisma.db.studentSubjectSelection.findMany({
+      where: { studentId, academicSessionId },
+      include: { subject: true },
+      orderBy: { subject: { name: 'asc' } },
+    });
+  }
+
+  /** Replaces a student's whole Senior Secondary subject selection for a
+   * session in one transaction (delete-then-recreate, not an append) —
+   * same "explicit re-selection, not silent drift" discipline as
+   * setStream. Compulsory subjects are computed and included
+   * automatically; the trade subject and electives are validated against
+   * Student.stream and the subject's isCompulsory/isCoreTrade/streams
+   * tags. Total (compulsory + trade + electives) must land on 8 or 9. */
+  async setSubjectSelection(studentId: string, academicSessionId: string, tradeSubjectId: string, electiveSubjectIds: string[]) {
+    const student = await this.prisma.db.student.findUniqueOrThrow({
+      where: { id: studentId },
+      include: { currentClassArm: { include: { schoolClass: { select: { level: true } } } } },
+    });
+    if (!student.currentClassArm || student.currentClassArm.schoolClass.level !== 'SENIOR_SECONDARY') {
+      throw new BadRequestException('Subject selection is only available to Senior Secondary students');
+    }
+    if (!student.stream) {
+      throw new BadRequestException('Set your stream before selecting subjects');
+    }
+
+    const uniqueElectiveIds = [...new Set(electiveSubjectIds)];
+    if (uniqueElectiveIds.length !== electiveSubjectIds.length) {
+      throw new BadRequestException('Duplicate subject in your elective selection');
+    }
+
+    const [compulsory, tradeSubject, electiveSubjects] = await Promise.all([
+      this.prisma.db.subject.findMany({ where: { gradeTiers: { has: 'SENIOR_SECONDARY' }, isCompulsory: true } }),
+      this.prisma.db.subject.findUniqueOrThrow({ where: { id: tradeSubjectId } }),
+      this.prisma.db.subject.findMany({ where: { id: { in: uniqueElectiveIds } } }),
+    ]);
+
+    if (!tradeSubject.isCoreTrade) {
+      throw new BadRequestException(`${tradeSubject.name} isn't a core trade subject`);
+    }
+    if (electiveSubjects.length !== uniqueElectiveIds.length) {
+      throw new BadRequestException('One or more selected subjects could not be found');
+    }
+    const invalidElective = electiveSubjects.find((s) => !s.streams.includes(student.stream!));
+    if (invalidElective) {
+      throw new BadRequestException(`${invalidElective.name} isn't offered in your stream`);
+    }
+
+    const subjectIds = [...new Set([...compulsory.map((s) => s.id), tradeSubject.id, ...uniqueElectiveIds])];
+    if (subjectIds.length < 8 || subjectIds.length > 9) {
+      throw new BadRequestException(`Total subjects must be 8 or 9 (you have ${subjectIds.length})`);
+    }
+
+    const before = await this.getSubjectSelection(studentId, academicSessionId);
+
+    await this.prisma.db.$transaction(async (tx) => {
+      await tx.studentSubjectSelection.deleteMany({ where: { studentId, academicSessionId } });
+      await tx.studentSubjectSelection.createMany({
+        data: subjectIds.map((subjectId) => tenantScopedCreate({ studentId, subjectId, academicSessionId })),
+      });
+    });
+
+    const after = await this.getSubjectSelection(studentId, academicSessionId);
+
+    await this.audit.log({
+      action: 'STUDENT_SUBJECT_SELECTION_SET',
+      entityType: 'Student',
+      entityId: studentId,
+      before: { subjects: before.map((b) => b.subject.name) },
+      after: { subjects: after.map((a) => a.subject.name) },
+    });
+
+    return after;
   }
 
   async updateStatus(id: string, status: StudentStatus) {

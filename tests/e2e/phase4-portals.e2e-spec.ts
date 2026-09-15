@@ -85,7 +85,7 @@ describe('Phase 4: Portals & Communication (e2e)', () => {
     const classRes = await request(app.getHttpServer())
       .post('/classes')
       .set('Authorization', `Bearer ${proprietorToken}`)
-      .send({ campusId, name: `P4 Class ${suffix}`, level: 'JUNIOR_SECONDARY' })
+      .send({ campusId, name: `P4 Class ${suffix}`, gradeTier: 'JUNIOR_SECONDARY' })
       .expect(201);
 
     const armARes = await request(app.getHttpServer())

@@ -38,6 +38,7 @@ const TENANT_SCOPED_MODELS = new Set<Prisma.ModelName>([
   'StreamChangeRequest',
   'TimetableSettings',
   'DocumentTemplate',
+  'StudentSubjectSelection',
 ]);
 
 const READ_OR_WHERE_OPS = new Set([

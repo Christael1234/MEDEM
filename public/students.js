@@ -76,7 +76,8 @@
     });
     tbody.innerHTML = students.length ? students.map((s) => {
       const arm = lastArmInfoById[s.currentClassArmId];
-      return `<tr><td><div class="person-cell"><span class="mini-avatar">${window.SchoolOS.initialsOf(s.firstName + ' ' + s.lastName)}</span>${s.firstName} ${s.lastName}</div></td><td>${s.admissionNo}</td><td>${arm ? `${arm.className} · ${arm.armName}` : '—'}</td><td><span class="status">${s.status}</span></td><td class="row-action"><button class="outline-button" data-view-student="${s.id}">View</button></td></tr>`;
+      const avatar = s.photoUrl ? `<img class="mini-avatar" src="${s.photoUrl}" alt="" style="object-fit:cover">` : `<span class="mini-avatar">${window.SchoolOS.initialsOf(s.firstName + ' ' + s.lastName)}</span>`;
+      return `<tr><td><div class="person-cell">${avatar}${s.firstName} ${s.lastName}</div></td><td>${s.admissionNo}</td><td>${arm ? `${arm.className} · ${arm.armName}` : '—'}</td><td><span class="status">${s.status}</span></td><td class="row-action"><button class="outline-button" data-view-student="${s.id}">View</button></td></tr>`;
     }).join('') : `<tr><td colspan="5">No students match this filter yet.</td></tr>`;
   }
 
@@ -343,13 +344,50 @@
           ? `<div class="inline-edit-row"><select id="studentStreamSelect" aria-label="Stream"><option value="">— Not set —</option>${Object.entries(STREAM_LABELS).map(([k, v]) => `<option value="${k}" ${s.stream === k ? 'selected' : ''}>${v}</option>`).join('')}</select><button type="button" class="outline-button" data-save-student-stream="${studentId}">Save</button></div>`
           : `<div class="modal-detail-row"><span>Stream</span><strong>${s.stream ? STREAM_LABELS[s.stream] : 'Not set'}</strong></div>`)
       : '';
+    // Admin visibility only — read-only, no edit control here. Selection
+    // stays self-service via the student's own Profile page
+    // (StudentsService.setSubjectSelection).
+    let subjectSelectionHtml = '';
+    if (isSeniorSecondary) {
+      try {
+        const selection = await window.SchoolOS.api('/students/' + studentId + '/subject-selection');
+        subjectSelectionHtml = selection.length
+          ? selection.map((sel) => sel.subject.name).sort().join(', ')
+          : 'Not yet selected';
+      } catch (err) { subjectSelectionHtml = `Could not load (${err.message})`; }
+    }
     const editToggleBtn = canManage
       ? (editMode
           ? `<button type="button" class="outline-button" data-cancel-edit-student="${studentId}">Cancel</button>`
           : `<button type="button" class="outline-button" data-edit-student="${studentId}"><i class="fa-solid fa-pen"></i> Edit</button>`)
       : '';
 
+    window.__uploadStudentPhoto = async (input) => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      const statusEl = document.getElementById('studentPhotoStatus');
+      if (statusEl) statusEl.textContent = 'Uploading…';
+      try {
+        const fd = new FormData();
+        fd.append('file', file);
+        await window.SchoolOS.api('/students/' + studentId + '/photo', { method: 'POST', body: fd });
+        window.SchoolOS.toast('Photo updated');
+        loadRealStudents();
+        openStudentDetailModal(studentId, true);
+      } catch (err) {
+        if (statusEl) statusEl.textContent = '';
+        window.SchoolOS.toast(`Could not upload photo (${err.message})`);
+      }
+    };
+    const photoHtml = s.photoUrl
+      ? `<img src="${s.photoUrl}" alt="" style="width:96px;height:96px;border-radius:50%;object-fit:cover">`
+      : `<span class="mini-avatar" style="width:96px;height:96px;font-size:28px">${window.SchoolOS.initialsOf(s.firstName + ' ' + s.lastName)}</span>`;
+    const photoSectionHtml = canEditNow
+      ? `<div style="display:flex;align-items:center;gap:14px;margin:10px 0">${photoHtml}<div><label class="outline-button" style="cursor:pointer;display:inline-block">Change photo<input type="file" accept="image/png,image/jpeg,image/webp" style="display:none" onchange="__uploadStudentPhoto(this)"></label><small style="display:block;margin-top:5px;color:var(--muted)" id="studentPhotoStatus">PNG, JPEG, or WEBP, up to 5MB.</small></div></div>`
+      : `<div style="margin:10px 0">${photoHtml}</div>`;
+
     window.SchoolOS.openModal(`<p class="eyebrow">Students</p><div style="display:flex;align-items:center;justify-content:space-between;gap:10px"><h2 style="margin:0">Student details</h2>${editToggleBtn}</div>
+      ${photoSectionHtml}
       ${canEditNow ? `<form onsubmit="__renameStudentSubmit(event)">
         <div class="inline-edit-row"><input name="firstName" value="${s.firstName}" aria-label="First name"><input name="lastName" value="${s.lastName}" aria-label="Last name"></div>
         <div class="inline-edit-row"><input name="middleName" value="${s.middleName || ''}" placeholder="Middle name (optional)" aria-label="Middle name"></div>
@@ -360,6 +398,7 @@
       ${canEditNow ? `<form class="inline-edit-row" onsubmit="__moveStudentClassSubmit(event)"><select name="classArm" aria-label="Class">${classArms.map((a) => `<option ${a.label === className ? 'selected' : ''}>${a.label}</option>`).join('')}</select><input name="reason" placeholder="Reason (optional)" aria-label="Reason for class change"><button type="submit" class="outline-button">Save</button></form>` : `<div class="modal-detail-row"><span>Class</span><strong>${className}</strong></div>`}
       <div class="modal-detail-row"><span>Gender</span><strong>${s.gender || '—'}</strong></div>
       ${isSeniorSecondary ? `<div class="detail-section"><p class="eyebrow">Stream</p>${streamHtml}</div>` : ''}
+      ${isSeniorSecondary ? `<div class="detail-section"><p class="eyebrow">Subjects (this session)</p><p class="modal-sub" style="margin:0">${subjectSelectionHtml}</p></div>` : ''}
       <div class="detail-section"><p class="eyebrow">Guardians</p>${guardiansHtml}</div>
       <div class="form-actions"><button class="outline-button" data-modal-close>Close</button></div>`);
   }

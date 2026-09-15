@@ -3,6 +3,7 @@ import { AuditService } from '../audit/audit.service';
 import { RequestContextService } from '../../common/context/request-context';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { tenantScopedCreate } from '../../common/prisma/tenant-scoped-create';
+import { levelForGradeTier } from '../../common/grade-tier';
 import { CreateClassArmDto } from './dto/create-class-arm.dto';
 import { CreateSchoolClassDto } from './dto/create-school-class.dto';
 import { UpdateClassArmDto } from './dto/update-class-arm.dto';
@@ -25,7 +26,8 @@ export class ClassesService {
       data: tenantScopedCreate({
         campusId: dto.campusId,
         name: dto.name,
-        level: dto.level,
+        gradeTier: dto.gradeTier,
+        level: levelForGradeTier(dto.gradeTier),
         order: dto.order ?? 0,
       }),
     });
@@ -73,7 +75,8 @@ export class ClassesService {
       where: { id },
       data: {
         name: dto.name ?? undefined,
-        level: dto.level ?? undefined,
+        gradeTier: dto.gradeTier ?? undefined,
+        level: dto.gradeTier ? levelForGradeTier(dto.gradeTier) : undefined,
         order: dto.order ?? undefined,
         promotesToClassId: dto.clearPromotesTo ? null : (dto.promotesToClassId ?? undefined),
       },
@@ -83,8 +86,8 @@ export class ClassesService {
       action: 'CLASS_UPDATED',
       entityType: 'SchoolClass',
       entityId: id,
-      before: { name: before.name, level: before.level, promotesToClassId: before.promotesToClassId },
-      after: { name: updated.name, level: updated.level, promotesToClassId: updated.promotesToClassId },
+      before: { name: before.name, gradeTier: before.gradeTier, promotesToClassId: before.promotesToClassId },
+      after: { name: updated.name, gradeTier: updated.gradeTier, promotesToClassId: updated.promotesToClassId },
     });
 
     return updated;

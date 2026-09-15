@@ -100,7 +100,8 @@
           const results = await window.SchoolOS.api('/portal/parent/children/' + s.id + '/results');
           if (results.length) resultsNote = `${results.length} published`;
         } catch (err) { resultsNote = 'Could not load'; }
-        return `<article class="child-card"><div class="person-cell"><span class="mini-avatar">${window.SchoolOS.initialsOf(name)}</span><div><strong>${name}</strong><small>${cls}</small></div></div><div class="child-stats"><div><span>Attendance</span><strong>${attendanceNote}</strong></div><div><span>Results</span><strong>${resultsNote}</strong></div><div><span>Fees</span><strong>Coming soon</strong></div></div><div class="child-actions"><button class="outline-button" data-view-child-results="${s.id}" data-child-name="${name}">View results</button><button class="outline-button" data-view-child-attendance="${s.id}" data-child-name="${name}">View attendance</button></div></article>`;
+        const avatar = s.photoUrl ? `<img class="mini-avatar" src="${s.photoUrl}" alt="" style="object-fit:cover">` : `<span class="mini-avatar">${window.SchoolOS.initialsOf(name)}</span>`;
+        return `<article class="child-card"><div class="person-cell">${avatar}<div><strong>${name}</strong><small>${cls}</small></div></div><div class="child-stats"><div><span>Attendance</span><strong>${attendanceNote}</strong></div><div><span>Results</span><strong>${resultsNote}</strong></div><div><span>Fees</span><strong>Coming soon</strong></div></div><div class="child-actions"><button class="outline-button" data-view-child-results="${s.id}" data-child-name="${name}">View results</button><button class="outline-button" data-view-child-attendance="${s.id}" data-child-name="${name}">View attendance</button></div></article>`;
       }));
       grid.innerHTML = cards.join('');
     } catch (err) { grid.innerHTML = `<p class="modal-sub">Could not load your children (${err.message})</p>`; }

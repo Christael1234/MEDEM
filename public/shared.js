@@ -195,7 +195,10 @@
     return true;
   }
   async function api(path, options = {}) {
-    const headers = Object.assign({ 'Content-Type': 'application/json' }, options.headers || {});
+    // FormData sets its own multipart boundary in the Content-Type header;
+    // forcing application/json on it would break the upload silently.
+    const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+    const headers = Object.assign(isFormData ? {} : { 'Content-Type': 'application/json' }, options.headers || {});
     const token = getAccessToken();
     if (token) headers.Authorization = `Bearer ${token}`;
     let res = await fetch(`${API_BASE}${path}`, Object.assign({}, options, { headers }));
@@ -263,9 +266,9 @@
     return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
   function fieldHtml(f) {
-    if (f.type === 'select') return `<div class="form-field"><label>${f.label}</label><select name="${f.name}">${f.options.map((o) => `<option>${o}</option>`).join('')}</select></div>`;
+    if (f.type === 'select') return `<div class="form-field"><label>${f.label}</label><select name="${f.name}">${f.options.map((o) => `<option ${o === f.value ? 'selected' : ''}>${o}</option>`).join('')}</select></div>`;
     if (f.type === 'textarea') return `<div class="form-field"><label>${f.label}</label><textarea name="${f.name}" placeholder="${f.placeholder || ''}">${escapeHtml(f.value)}</textarea></div>`;
-    if (f.type === 'checkboxes') return `<div class="form-field"><label>${f.label}</label><div class="checkbox-group">${f.options.length ? f.options.map((o) => `<label class="checkbox-option"><input type="checkbox" name="${f.name}" value="${o.value}">${o.label}</label>`).join('') : '<p class="modal-sub" style="margin:0">None yet.</p>'}</div></div>`;
+    if (f.type === 'checkboxes') return `<div class="form-field"><label>${f.label}</label><div class="checkbox-group">${f.options.length ? f.options.map((o) => `<label class="checkbox-option"><input type="checkbox" name="${f.name}" value="${o.value}" ${(f.value || []).includes(o.value) ? 'checked' : ''}>${o.label}</label>`).join('') : '<p class="modal-sub" style="margin:0">None yet.</p>'}</div></div>`;
     return `<div class="form-field"><label>${f.label}</label><input name="${f.name}" type="${f.type || 'text'}" placeholder="${f.placeholder || ''}" value="${f.value || ''}"></div>`;
   }
   function formModal({ eyebrow, title, sub, fields, submitLabel, onSubmit }) {
@@ -510,8 +513,11 @@
   // back so active-link matching keeps working either way.
   function currentFile() {
     const last = location.pathname.split('/').pop();
-    if (!last) return 'dashboard.html';
-    return last.includes('.') ? last : last + '.html';
+    const base = !last ? 'dashboard.html' : (last.includes('.') ? last : last + '.html');
+    // Several nav items share one base file with different hash-routed
+    // tabs (e.g. academics.html#teachers vs academics.html#lessons) —
+    // dropping the hash here made every such item match "here" at once.
+    return base + (location.hash || '');
   }
   // Admissions, Fees/billing, Schools/Campuses, and People & payroll have
   // no real backend behind them yet (each is still a hardcoded mock array;
@@ -534,7 +540,7 @@
     const here = currentFile();
     nav.innerHTML = `<p class="nav-label">${ROLE_TITLES[role]} workspace</p>` + items.map((item, i) => {
       const file = i === 0 ? 'dashboard.html' : fileForSlug(slug(item));
-      const active = file.split('#')[0] === here;
+      const active = file === here;
       const label = `<span>${iconFor(item, i)}</span><span class="nav-label-text">${item}</span>`;
       return `<a class="nav-link ${active ? 'active' : ''}" href="${file}" title="${item}">${label}</a>`;
     }).join('');
@@ -543,7 +549,7 @@
       const mobile = role === 'parent' || role === 'student';
       mobileNav.innerHTML = mobile ? items.slice(0, 5).map((item, i) => {
         const file = i === 0 ? 'dashboard.html' : fileForSlug(slug(item));
-        return `<a class="${file.split('#')[0] === here ? 'active' : ''}" href="${file}"><span>${iconFor(item, i)}</span>${item}</a>`;
+        return `<a class="${file === here ? 'active' : ''}" href="${file}"><span>${iconFor(item, i)}</span>${item}</a>`;
       }).join('') : '';
     }
   }
@@ -580,6 +586,14 @@
     if (profileRole) profileRole.textContent = ROLE_TITLES[role] || user.role;
     const profileInitials = document.getElementById('profileInitials');
     if (profileInitials) profileInitials.textContent = initialsOf(displayName);
+    // Students are the only role with a photo of themselves (see
+    // UploadsModule/students.js): swap the sidebar initials bubble for it
+    // when set, same as the row/detail-modal avatars in students.js.
+    if (profileInitials && user.role === 'STUDENT') {
+      api('/portal/student/me').then((p) => {
+        if (p.photoUrl) profileInitials.innerHTML = `<img src="${p.photoUrl}" alt="" style="width:100%;height:100%;border-radius:inherit;object-fit:cover">`;
+      }).catch(() => { /* keep initials as fallback */ });
+    }
 
     const yearBtn = document.getElementById('sessionYearBtn');
     if (yearBtn && yearBtn.firstChild) yearBtn.firstChild.textContent = (localStorage.getItem(SESSION_LABEL_KEY) || '—') + ' ';

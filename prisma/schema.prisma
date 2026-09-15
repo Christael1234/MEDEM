@@ -70,6 +70,7 @@ model Tenant {
   streamChangeRequests StreamChangeRequest[]
   timetableSettings TimetableSettings?
   documentTemplates DocumentTemplate[]
+  studentSubjectSelections StudentSubjectSelection[]
 
   @@map("tenants")
 }
@@ -254,6 +255,7 @@ model AcademicSession {
   terms               Term[]
   studentClassHistory StudentClassHistory[]
   results             Result[]
+  studentSubjectSelections StudentSubjectSelection[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -290,6 +292,20 @@ enum SchoolLevel {
   SENIOR_SECONDARY
 }
 
+/// Finer-grained than SchoolLevel: splits PRIMARY into Lower/Upper bands
+/// (Primary 1-3 vs 4-6), which the Nigerian curriculum gives different core
+/// subject lists to. Every SchoolClass carries exactly one of these; `level`
+/// is always derived from it (ClassesService), never set independently, so
+/// the two can never disagree. Subject.gradeTiers is scoped by this enum
+/// instead of SchoolLevel for the same reason.
+enum GradeTier {
+  NURSERY
+  LOWER_PRIMARY
+  UPPER_PRIMARY
+  JUNIOR_SECONDARY
+  SENIOR_SECONDARY
+}
+
 /// Senior Secondary science/art streaming. Only meaningful once a student's
 /// current class is SENIOR_SECONDARY: StudentsService.setStream rejects
 /// setting it otherwise. Subject.streams uses the same enum to tag which
@@ -312,6 +328,9 @@ model SchoolClass {
   campus            Campus       @relation(fields: [campusId], references: [id], onDelete: Cascade)
   name              String // e.g. "JSS 2"
   level             SchoolLevel  @default(JUNIOR_SECONDARY)
+  /// Admin-facing scoping field (ClassesService derives `level` from this
+  /// automatically); see the GradeTier doc comment.
+  gradeTier         GradeTier    @default(JUNIOR_SECONDARY)
   order             Int          @default(0) // for sorting class levels
   promotesToClassId String?
   promotesToClass   SchoolClass? @relation("ClassPromotion", fields: [promotesToClassId], references: [id], onDelete: SetNull)
@@ -353,23 +372,37 @@ model ClassArm {
   @@map("class_arms")
 }
 
-/// levels: which SchoolLevel(s) this subject is taught at (e.g. "Further
-/// Mathematics" is SENIOR_SECONDARY only; "Mathematics" spans several).
-/// Empty means "not yet configured"; SubjectsService.assignTeacher
-/// treats that as "any level" rather than blocking every assignment.
+/// gradeTiers: which GradeTier(s) this subject is taught at (e.g. "Further
+/// Mathematics" is SENIOR_SECONDARY only; "Pre-Vocational Studies" spans
+/// UPPER_PRIMARY and JUNIOR_SECONDARY, but not LOWER_PRIMARY). Empty means
+/// "not yet configured"; SubjectsService.assignTeacher treats that as "any
+/// grade tier" rather than blocking every assignment.
 model Subject {
-  id        String        @id @default(uuid())
-  tenantId  String
-  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  name      String
-  code      String?
-  levels    SchoolLevel[]
+  id         String      @id @default(uuid())
+  tenantId   String
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name       String
+  code       String?
+  gradeTiers GradeTier[]
   /// Which stream(s) this subject belongs to at Senior Secondary (e.g.
   /// Physics -> [SCIENCE], Literature -> [ART]). Empty means "any
   /// stream", same "empty = unconfigured, not blocking" convention as
-  /// `levels` (see SubjectsService.listSubjects).
-  streams   Stream[]      @default([])
-  createdAt DateTime      @default(now())
+  /// `gradeTiers` (see SubjectsService.listSubjects) — EXCEPT for a
+  /// Senior Secondary subject that is neither `isCompulsory` nor
+  /// `isCoreTrade`: for those, `streams` must be non-empty
+  /// (SubjectsService enforces this at create/update time), since a
+  /// student's stream is what decides which electives they're offered.
+  streams   Stream[] @default([])
+  /// Auto-included in every Senior Secondary student's subject selection
+  /// (StudentsService.setSubjectSelection) regardless of `streams` — e.g.
+  /// English Language, Mathematics.
+  isCompulsory Boolean @default(false)
+  /// One of these is required in every Senior Secondary student's
+  /// selection (their choice of trade), independent of `streams` — e.g.
+  /// Solar PV Installation and Maintenance. Mutually exclusive with
+  /// `isCompulsory` (SubjectsService rejects both being true).
+  isCoreTrade  Boolean @default(false)
+  createdAt DateTime @default(now())
 
   teacherAssignments TeacherSubjectAssignment[]
   results            Result[]
@@ -377,6 +410,7 @@ model Subject {
   lessons            Lesson[]
   cbtExams           CbtExam[]
   timetableSlots     TimetableSlot[]
+  studentSelections  StudentSubjectSelection[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -490,6 +524,7 @@ model Student {
   classHistory      StudentClassHistory[]
   cbtAttempts       CbtAttempt[]
   streamChangeRequests StreamChangeRequest[]
+  subjectSelections StudentSubjectSelection[]
 
   @@unique([tenantId, admissionNo])
   @@index([tenantId])
@@ -548,6 +583,29 @@ model StreamChangeRequest {
   @@index([tenantId, status])
   @@index([studentId])
   @@map("stream_change_requests")
+}
+
+/// One row per (student, subject, session) a Senior Secondary student is
+/// taking — compulsory, trade, and stream-elective subjects all land here
+/// the same way once selected (StudentsService.setSubjectSelection); no
+/// special-casing at read time. Resubmitting a selection replaces the
+/// whole row-set for that session in a transaction, it doesn't append.
+model StudentSubjectSelection {
+  id                String          @id @default(uuid())
+  tenantId          String
+  tenant            Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  studentId         String
+  student           Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subjectId         String
+  subject           Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  academicSessionId String
+  academicSession   AcademicSession @relation(fields: [academicSessionId], references: [id], onDelete: Cascade)
+  selectedAt        DateTime        @default(now())
+
+  @@unique([studentId, subjectId, academicSessionId])
+  @@index([tenantId])
+  @@index([studentId, academicSessionId])
+  @@map("student_subject_selections")
 }
 
 /// A parent/guardian account. May have a login (Parent portal, Phase 4-ish

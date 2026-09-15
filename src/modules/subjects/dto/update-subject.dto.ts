@@ -1,5 +1,5 @@
-import { SchoolLevel, Stream } from '@prisma/client';
-import { IsArray, IsEnum, IsOptional, IsString } from 'class-validator';
+import { GradeTier, Stream } from '@prisma/client';
+import { IsArray, IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
 
 export class UpdateSubjectDto {
   @IsOptional()
@@ -12,11 +12,19 @@ export class UpdateSubjectDto {
 
   @IsOptional()
   @IsArray()
-  @IsEnum(SchoolLevel, { each: true })
-  levels?: SchoolLevel[];
+  @IsEnum(GradeTier, { each: true })
+  gradeTiers?: GradeTier[];
 
   @IsOptional()
   @IsArray()
   @IsEnum(Stream, { each: true })
   streams?: Stream[];
+
+  @IsOptional()
+  @IsBoolean()
+  isCompulsory?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isCoreTrade?: boolean;
 }

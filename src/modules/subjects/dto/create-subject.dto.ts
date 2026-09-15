@@ -1,5 +1,5 @@
-import { SchoolLevel, Stream } from '@prisma/client';
-import { IsArray, IsEnum, IsOptional, IsString } from 'class-validator';
+import { GradeTier, Stream } from '@prisma/client';
+import { IsArray, IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
 
 export class CreateSubjectDto {
   @IsString()
@@ -9,18 +9,33 @@ export class CreateSubjectDto {
   @IsString()
   code?: string;
 
-  /** Which level(s) this subject is taught at: drives which classes it
-   * can be assigned to (SubjectsService.assignTeacher) and which subjects
-   * show up when building a class's curriculum at a given level. */
+  /** Which grade tier(s) this subject is taught at: drives which classes
+   * it can be assigned to (SubjectsService.assignTeacher) and which
+   * subjects show up when building a class's curriculum at a given tier. */
   @IsArray()
-  @IsEnum(SchoolLevel, { each: true })
-  levels!: SchoolLevel[];
+  @IsEnum(GradeTier, { each: true })
+  gradeTiers!: GradeTier[];
 
-  /** Which Senior Secondary stream(s) this subject belongs to. Empty/omitted
-   * means "any stream": only meaningful when SENIOR_SECONDARY is among
-   * levels; a subject not taught at SS just ignores this. */
+  /** Which Senior Secondary stream(s) this subject belongs to. Required
+   * (non-empty) for a Senior Secondary subject that isn't compulsory or a
+   * core trade subject — SubjectsService enforces this — since a
+   * student's stream is what decides which electives they're offered. */
   @IsOptional()
   @IsArray()
   @IsEnum(Stream, { each: true })
   streams?: Stream[];
+
+  /** Auto-included in every Senior Secondary student's subject selection,
+   * regardless of `streams` (e.g. English Language). Mutually exclusive
+   * with `isCoreTrade`. */
+  @IsOptional()
+  @IsBoolean()
+  isCompulsory?: boolean;
+
+  /** One of these is required in every Senior Secondary student's
+   * selection (their choice of trade), independent of `streams`. Mutually
+   * exclusive with `isCompulsory`. */
+  @IsOptional()
+  @IsBoolean()
+  isCoreTrade?: boolean;
 }
