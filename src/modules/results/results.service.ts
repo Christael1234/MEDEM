@@ -28,6 +28,7 @@ export class ResultsService {
     await this.prisma.db.academicSession.findUniqueOrThrow({ where: { id: dto.academicSessionId } });
     await this.academicSessions.assertTermBelongsToTenant(dto.termId);
     await this.prisma.db.subject.findUniqueOrThrow({ where: { id: dto.subjectId } });
+    await this.assertSubjectIsSelected(dto.studentId, dto.subjectId);
 
     const totalScore = this.computeTotal(dto.continuousAssessmentScore, dto.examScore);
     // Computed once, against whatever grade bands exist right now, and
@@ -310,6 +311,30 @@ export class ResultsService {
     });
     if (!assignment) {
       throw new ForbiddenException('Teacher is not assigned to this class/subject');
+    }
+  }
+
+  /** Senior Secondary students only take the subjects they've actually
+   * selected for the session (StudentsService.setSubjectSelection) —
+   * entering a result for anything else would misrepresent their real
+   * course load. Applies to every role, not just TEACHER (unlike
+   * assertTeacherCanEnterResult): a PROPRIETOR/PRINCIPAL creating a
+   * result directly is just as bound by this as a teacher. Every other
+   * level has no selection concept, so this is a no-op there; likewise if
+   * no session is active yet, there's nothing to check against. */
+  private async assertSubjectIsSelected(studentId: string, subjectId: string): Promise<void> {
+    const student = await this.prisma.db.student.findUniqueOrThrow({
+      where: { id: studentId },
+      include: { currentClassArm: { include: { schoolClass: { select: { level: true } } } } },
+    });
+    if (!student.currentClassArm || student.currentClassArm.schoolClass.level !== 'SENIOR_SECONDARY') return;
+
+    const currentSession = await this.academicSessions.getCurrentSession();
+    if (!currentSession) return;
+
+    const selection = await this.students.getSubjectSelection(studentId, currentSession.id);
+    if (!selection.some((s) => s.subjectId === subjectId)) {
+      throw new ForbiddenException("This subject isn't part of the student's selected subjects for this session");
     }
   }
 
