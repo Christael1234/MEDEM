@@ -1,35 +1,35 @@
-// Dashboard / Control Center — the one page every role lands on after
+// Dashboard / Control Center, the one page every role lands on after
 // signing in. Everything here was pageMarkup-adjacent code that used to
 // live inline in app.js's dashboard section; split out 1:1 with no
 // behavior changes.
 (function () {
   const roles = {
-    proprietor: { name: 'Adetola', title: 'Proprietor / Owner', symbol: '♔', brief: 'Own the whole school, without chasing updates.', text: 'Finance, people and academic exceptions are in one decision queue.', action: 'Review staff & results', goto: 'people-and-payroll' },
-    principal: { name: 'Bolanle', title: 'Principal', symbol: '◈', brief: 'Keep teaching, learning and standards on track.', text: 'Focus on attendance, result approvals, staff coverage and learning exceptions.', action: 'Review results', goto: 'exams-and-results' },
-    bursar: { name: 'Chinwe', title: 'Bursar / Accountant', symbol: '₦', brief: 'Keep every naira visible and reconciled.', text: 'Work from invoices through payments to exceptions without losing the audit trail.', action: 'Open fees & payments', goto: 'fees' },
-    hr: { name: 'Miriam', title: 'HR / Administrator', symbol: '♙', brief: 'Give staff a reliable, well-run place to work.', text: 'Manage documents, leave, attendance and payroll preparation in one staff record.', action: 'Review leave requests', goto: 'leave' },
-    teacher: { name: 'Tunde', title: 'Teacher', symbol: '✎', brief: 'Everything you need for the classes you teach.', text: 'Take attendance, enter marks and keep families informed.', action: 'Take today’s attendance', goto: 'attendance' },
-    parent: { name: 'Nneka', title: 'Parent / Guardian', symbol: '♥', brief: 'Stay close to your children’s school life.', text: 'See attendance, results and notices in one calm place. Fees aren’t built yet.', action: 'View my children', goto: 'my-children' },
-    student: { name: 'Ada', title: 'Student', symbol: '★', brief: 'Know what’s next and keep up with your work.', text: 'Your timetable, assignments, CBT exams and published results are easy to find.', action: 'View today’s timetable', goto: 'timetable' },
-    operations: { name: 'Kabiru', title: 'Transport / Library staff', symbol: '⌘', brief: 'Run the service your school relies on.', text: 'Access your assigned operational module with clear daily actions.', action: 'Open transport register', goto: 'transport-routes' },
-    superadmin: { name: 'Femi', title: 'Super Admin', symbol: '⚙', brief: 'Keep the SchoolOS platform healthy and trusted.', text: 'Manage tenants, subscriptions, support and audit monitoring.', action: 'Review platform alerts', goto: 'system-health' },
-    compliance: { name: 'Yewande', title: 'Compliance Administrator', symbol: '⚖', brief: 'Keep statutory payroll rules current and compliant.', text: 'Maintain versioned PAYE, pension and NHF rules, and run the compliance review before every payroll release.', action: 'Run compliance review', goto: 'compliance-review' },
+    proprietor: { title: 'Proprietor / Owner', symbol: '♔', brief: 'Own the whole school, without chasing updates.', text: 'Finance, people and academic exceptions are in one decision queue.', action: 'Review staff & results', goto: 'people-and-payroll' },
+    principal: { title: 'Principal', symbol: '◈', brief: 'Keep teaching, learning and standards on track.', text: 'Focus on attendance, result approvals, staff coverage and learning exceptions.', action: 'Review results', goto: 'exams-and-results' },
+    bursar: { title: 'Bursar / Accountant', symbol: '₦', brief: 'Keep every naira visible and reconciled.', text: 'Work from invoices through payments to exceptions without losing the audit trail.', action: 'Open fees & payments', goto: 'fees' },
+    hr: { title: 'HR / Administrator', symbol: '♙', brief: 'Give staff a reliable, well-run place to work.', text: 'Manage documents, leave, attendance and payroll preparation in one staff record.', action: 'Review leave requests', goto: 'leave' },
+    teacher: { title: 'Teacher', symbol: '✎', brief: 'Everything you need for the classes you teach.', text: 'Take attendance, enter marks and keep families informed.', action: 'Take today’s attendance', goto: 'attendance' },
+    parent: { title: 'Parent / Guardian', symbol: '♥', brief: 'Stay close to your children’s school life.', text: 'See attendance, results and notices in one calm place. Fees aren’t built yet.', action: 'View my children', goto: 'my-children' },
+    student: { title: 'Student', symbol: '★', brief: 'Know what’s next and keep up with your work.', text: 'Your timetable, assignments, CBT exams and published results are easy to find.', action: 'View today’s timetable', goto: 'timetable' },
+    operations: { title: 'Transport / Library staff', symbol: '⌘', brief: 'Run the service your school relies on.', text: 'Access your assigned operational module with clear daily actions.', action: 'Open transport register', goto: 'transport-routes' },
+    superadmin: { title: 'Super Admin', symbol: '⚙', brief: 'Keep the SchoolOS platform healthy and trusted.', text: 'Manage tenants, subscriptions, support and audit monitoring.', action: 'Review platform alerts', goto: 'system-health' },
+    compliance: { title: 'Compliance Administrator', symbol: '⚖', brief: 'Keep statutory payroll rules current and compliant.', text: 'Maintain versioned PAYE, pension and NHF rules, and run the compliance review before every payroll release.', action: 'Run compliance review', goto: 'compliance-review' },
   };
   const rolePermissions = {
-    proprietor: { chips: ['Full control, every campus', 'Approve payroll & refunds', 'Manage settings, branding & templates'], restricted: [] },
-    principal: { chips: ['Approve & publish results', 'Manage academics, staff, attendance', 'View fee status, finance, payroll, library'], restricted: ['Cannot edit fees or run payroll', 'Fee revenue figures hidden', 'Cannot edit branding or templates'] },
-    bursar: { chips: ['Full fees, payments & finance', 'Prepare payroll'], restricted: ['Cannot approve payroll', 'View-only on students, HR'] },
-    hr: { chips: ['Full HR & workforce', 'Prepare payroll inputs'], restricted: ['No fee or finance access', 'Cannot approve payroll'] },
-    teacher: { chips: ['Assigned classes & subjects only', 'Lessons, resources, assignments & grading', 'Attendance & marks'], restricted: ['Cannot approve or publish results'] },
-    parent: { chips: ['Own linked children only', 'Pay fees, view lessons, results & attendance'], restricted: ['No staff, finance or other families’ data'] },
-    student: { chips: ['Own records only', 'View lessons & resources', 'Submit assignments, CBT exams'], restricted: ['No communication or admin functions'] },
-    operations: { chips: ['Assigned module only', 'Full library within your campus'], restricted: ['Nothing outside the assignment is visible'] },
-    superadmin: { chips: ['Manage tenants, plans & billing', 'Platform monitoring & support'], restricted: ['No school records without logged, time-boxed access'] },
-    compliance: { chips: ['Manage statutory rule versions', 'Run compliance review'], restricted: ['Cannot prepare, approve or finalise payroll'] },
+    proprietor: { chips: ['Full control, every campus', 'Approve payroll & refunds', 'Manage settings, branding & templates'] },
+    principal: { chips: ['Approve & publish results', 'Manage academics, staff, attendance', 'View fee status, finance, payroll, library'] },
+    bursar: { chips: ['Full fees, payments & finance', 'Prepare payroll'] },
+    hr: { chips: ['Full HR & workforce', 'Prepare payroll inputs'] },
+    teacher: { chips: ['Assigned classes & subjects only', 'Lessons, resources, assignments & grading', 'Attendance & marks'] },
+    parent: { chips: ['Own linked children only', 'Pay fees, view lessons, results & attendance'] },
+    student: { chips: ['Own records only', 'View lessons & resources', 'Submit assignments, CBT exams'] },
+    operations: { chips: ['Assigned module only', 'Full library within your campus'] },
+    superadmin: { chips: ['Manage tenants, plans & billing', 'Platform monitoring & support'] },
+    compliance: { chips: ['Manage statutory rule versions', 'Run compliance review'] },
   };
   const dashboardScopes = { proprietor: ['fees', 'payroll', 'staff', 'students', 'academics', 'finance'], principal: ['fees', 'payroll', 'staff', 'students', 'academics'], bursar: ['fees', 'payroll', 'staff', 'students', 'finance'], hr: ['payroll', 'staff', 'students'], teacher: ['academics', 'students'], parent: [], student: [], operations: [], superadmin: [], compliance: ['payroll'] };
   // Fees and payroll aren't built on the backend yet (CLAUDE.md non-goal
-  // for this pass) — every role sees the same honest "coming soon" copy
+  // for this pass); every role sees the same honest "coming soon" copy
   // rather than a fabricated arrears/payroll narrative.
   const dashboardFeesCopy = { default: ['Coming soon', 'Fees & payments isn’t built on the backend yet.'] };
   function payrollCardCopyFor() {
@@ -47,10 +47,10 @@
   const workspaceCardCopy = {
     proprietor: [['⌂', 'Today’s priority', 'Review staff records and result approvals.', 'people-and-payroll'], ['✓', 'Action queue', submittedResultsCopy, 'academics'], ['◫', 'Useful reports', 'Share a clear update with your team.', 'reports']],
     principal: [['✎', 'Result approvals', submittedResultsCopy, 'academics'], ['♟', 'Teacher coverage', 'Review assignments and class coverage this term.', 'teachers'], ['✓', 'Attendance exceptions', 'Check classes with repeated absences.', 'attendance']],
-    bursar: [['₦', 'Reconciliation', 'Coming soon — reconciliation isn’t built yet.', 'reconciliation'], ['◫', 'Payroll prep', 'Coming soon — payroll isn’t built yet.', 'payroll'], ['◫', 'Arrears', 'Coming soon — fees & payments isn’t built yet.', 'arrears']],
-    hr: [['♙', 'Leave requests', 'Coming soon — leave tracking isn’t built yet.', 'leave'], ['◫', 'Payroll inputs', 'Prepare salary inputs for this month’s run.', 'payroll'], ['✓', 'Document renewals', 'Coming soon — staff document tracking isn’t built yet.', 'documents']],
-    teacher: [['✓', 'Take attendance', 'Mark today’s register for your class.', 'attendance'], ['✎', 'Mark submissions', 'Coming soon — assignment submission tracking isn’t built yet.', 'assignments'], ['▤', 'Your timetable', 'See today’s periods at a glance.', 'timetable']],
-    parent: [['✓', 'Attendance', 'Check this week’s attendance for your children.', 'attendance'], ['▤', 'Timetable', 'See what your children are studying today.', 'timetable'], ['♥', 'Fees & payments', 'Coming soon — billing isn’t built yet.', 'fees']],
+    bursar: [['₦', 'Reconciliation', 'Coming soon. Reconciliation isn’t built yet.', 'reconciliation'], ['◫', 'Payroll prep', 'Coming soon. Payroll isn’t built yet.', 'payroll'], ['◫', 'Arrears', 'Coming soon. Fees & payments isn’t built yet.', 'arrears']],
+    hr: [['♙', 'Leave requests', 'Coming soon. Leave tracking isn’t built yet.', 'leave'], ['◫', 'Payroll inputs', 'Prepare salary inputs for this month’s run.', 'payroll'], ['✓', 'Document renewals', 'Coming soon. Staff document tracking isn’t built yet.', 'documents']],
+    teacher: [['✓', 'Take attendance', 'Mark today’s register for your class.', 'attendance'], ['✎', 'Mark submissions', 'Coming soon. Assignment submission tracking isn’t built yet.', 'assignments'], ['▤', 'Your timetable', 'See today’s periods at a glance.', 'timetable']],
+    parent: [['✓', 'Attendance', 'Check this week’s attendance for your children.', 'attendance'], ['▤', 'Timetable', 'See what your children are studying today.', 'timetable'], ['♥', 'Fees & payments', 'Coming soon. Billing isn’t built yet.', 'fees']],
     student: [['✎', 'Assignments', 'Keep up with what’s due this week.', 'assignments'], ['▤', 'Your timetable', 'See today’s classes at a glance.', 'timetable'], ['✓', 'Results', 'Check your latest scores.', 'results']],
   };
   function workspaceCardsFor(role) {
@@ -85,9 +85,14 @@
       }
     }
   }
+  // PROPRIETOR/PRINCIPAL (the "Admin" login tile) greet generically as
+  // "Admin" rather than by personal first name — every other role still
+  // gets greeted by name.
   function greetingName() {
     const user = window.SchoolOS.getUser();
-    return user ? user.firstName : '';
+    if (!user) return '';
+    if (user.role === 'PROPRIETOR' || user.role === 'PRINCIPAL') return 'Admin';
+    return user.firstName;
   }
   function timeOfDayGreeting() {
     const hour = new Date().getHours();
@@ -112,9 +117,9 @@
     roleActionBtn.removeAttribute('data-goto-page');
     roleActionBtn.removeAttribute('data-toast');
     if (r.goto) roleActionBtn.setAttribute('data-goto-page', r.goto);
-    else roleActionBtn.setAttribute('data-toast', `${r.action} — done`);
-    const perm = rolePermissions[role] || { chips: [], restricted: [] };
-    document.getElementById('permissionChips').innerHTML = perm.chips.map((x) => `<span class="permission-chip">${x}</span>`).join('') + perm.restricted.map((x) => `<span class="permission-chip restricted">✕ ${x}</span>`).join('');
+    else roleActionBtn.setAttribute('data-toast', `${r.action}: done`);
+    const perm = rolePermissions[role] || { chips: [] };
+    document.getElementById('permissionChips').innerHTML = perm.chips.map((x) => `<span class="permission-chip">${x}</span>`).join('');
     document.getElementById('workspaceTitle').textContent = `${r.title} workspace`;
     document.getElementById('workspaceGrid').innerHTML = workspaceCardsFor(role).map((x) => `<article class="workspace-card"${x[3] ? ` data-goto-page="${x[3]}"` : ''}><div class="workspace-icon">${x[0]}</div><h3>${x[1]}</h3><p>${x[2]}</p></article>`).join('');
   }
@@ -160,7 +165,7 @@
 
   // renderDashboard() already greets by the real signed-in user's name.
   // For STUDENT accounts specifically, patch in the linked Student
-  // record's first name instead — the source of truth, and it can differ
+  // record's first name instead: the source of truth, and it can differ
   // from the login account's name.
   async function patchGreetingWithRealName(role) {
     const user = window.SchoolOS.getUser();

@@ -1,7 +1,7 @@
 /**
  * The school week is fixed (Monday-Friday); the school DAY is built from
  * admin-configurable settings (TimetableSettings/TimetableBreak) rather
- * than a hardcoded constant — see TimetableService.getSettings/buildPeriods.
+ * than a hardcoded constant; see TimetableService.getSettings/buildPeriods.
  * Period length is the one thing that isn't admin-configurable: every
  * period is 30 minutes, app-wide.
  */
@@ -45,7 +45,7 @@ export function addMinutes(time: string, minutes: number): string {
 /**
  * Builds the school day as a sequence of PERIOD_DURATION_MINUTES periods
  * from dayStartTime to dayEndTime, treating every admin-configured break
- * window as non-schedulable: a period is never placed across a break — the
+ * window as non-schedulable: a period is never placed across a break, the
  * cursor jumps straight from wherever it is to the break's end (forfeiting
  * a partial fragment if a period would otherwise straddle the break start,
  * same as it forfeits any leftover minutes that don't fill a full period

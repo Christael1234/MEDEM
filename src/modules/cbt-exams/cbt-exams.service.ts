@@ -19,7 +19,7 @@ export class CbtExamsService {
     private readonly requestContext: RequestContextService,
   ) {}
 
-  /** Teacher-authored only — mirrors LessonsService.create. Unlike
+  /** Teacher-authored only, mirrors LessonsService.create. Unlike
    * Lesson/Assignment, an exam starts life invisible to everyone but its
    * author and goes through submit/approve before students can see it
    * (see the status filtering in listForClassArm/assertReadAccess). */
@@ -64,7 +64,7 @@ export class CbtExamsService {
 
   /** STUDENT/PARENT only ever see PUBLISHED exams (draft/submitted exams
    * are staff-internal, same discipline as Result). TEACHER sees every
-   * PUBLISHED exam for the arm plus their own drafts/submitted ones — not
+   * PUBLISHED exam for the arm plus their own drafts/submitted ones, not
    * a co-teacher's unpublished question bank. PRINCIPAL/PROPRIETOR/other
    * staff see everything, since they're the approvers. */
   async listForClassArm(classArmId: string) {
@@ -108,7 +108,7 @@ export class CbtExamsService {
   }
 
   /** Every exam status/statutory review that isn't a TEACHER/PRINCIPAL/
-   * PROPRIETOR/eligible-STUDENT is denied outright (deny by default) —
+   * PROPRIETOR/eligible-STUDENT is denied outright (deny by default),
    * BURSAR/HR/other staff have no reason to read exam question banks.
    * Options carry isCorrect only for the author teacher and
    * principal/proprietor; a STUDENT taking the exam never receives it. */
@@ -207,7 +207,7 @@ export class CbtExamsService {
   }
 
   /** Tenant-wide (CbtExam carries its own tenantId, so this is a single
-   * auto-scoped query — unlike Lesson's oversight view, which has to loop
+   * auto-scoped query, unlike Lesson's oversight view, which has to loop
    * every class arm since Lesson has no equivalent "list all" route). */
   async listPendingReview() {
     return this.prisma.db.cbtExam.findMany({
@@ -253,7 +253,7 @@ export class CbtExamsService {
     return this.prisma.db.cbtAttempt.create({ data: { examId, studentId: student.id } });
   }
 
-  /** Auto-grades against CbtOption.isCorrect at submit time — grading is
+  /** Auto-grades against CbtOption.isCorrect at submit time: grading is
    * never recomputed later, so a subsequent edit to the question bank
    * (there is none today, but if added) wouldn't silently reshuffle a
    * student's already-recorded score. */
@@ -297,7 +297,7 @@ export class CbtExamsService {
   }
 
   /** Aggregate stats mirror what the mock exam-results modal always
-   * promised (average/highest/lowest score, completion rate) — now
+   * promised (average/highest/lowest score, completion rate), now
    * computed from real CbtAttempt rows instead of hardcoded numbers.
    * completionRate is against ACTIVE students currently in the arm, not
    * just students who started an attempt. */

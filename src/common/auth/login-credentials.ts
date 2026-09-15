@@ -6,7 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 export const DEFAULT_PORTAL_PASSWORD = 'password123';
 
 /** Generates a human-readable, collision-safe login email from a person's
- * name — "maybe their name only" per the product decision, so it reads
+ * name ("maybe their name only" per the product decision), so it reads
  * like a real school-issued address rather than a random id. Collision
  * checks go through prisma.raw since User.email is unique tenant-wide,
  * not just within the caller's own tenant. */

@@ -18,7 +18,7 @@ export class TimetableService {
   ) {}
 
   /** Lazily creates the tenant's settings row with sensible defaults on
-   * first read — no separate seed step needed, and every tenant that's
+   * first read: no separate seed step needed, and every tenant that's
    * never touched timetable settings still gets a working default day. */
   async getSettings() {
     let settings = await this.prisma.db.timetableSettings.findFirst({
@@ -34,7 +34,7 @@ export class TimetableService {
   }
 
   /** Admin sets break windows (and optionally the day's start/end) BEFORE
-   * generating — Generate always rebuilds the whole timetable from
+   * generating. Generate always rebuilds the whole timetable from
    * whatever settings are current, so this has to happen first for the
    * breaks to actually apply. */
   async updateSettings(dto: UpdateTimetableSettingsDto) {
@@ -90,13 +90,13 @@ export class TimetableService {
   /**
    * Regenerates the whole tenant's timetable from current
    * TeacherSubjectAssignment data and the current TimetableSettings. Wipes
-   * every existing slot for the tenant first — a timetable is a derived
+   * every existing slot for the tenant first: a timetable is a derived
    * artifact, not something hand-edited into a state the generator
    * wouldn't produce, so "regenerate" means "recompute from scratch", not
    * "merge".
    *
-   * A Nursery class's day is sized to its own subject count — one period
-   * per subject per day, every day — rather than stretched across the
+   * A Nursery class's day is sized to its own subject count (one period
+   * per subject per day, every day) rather than stretched across the
    * full Junior/Senior day the way a class with a dozen subjects needs;
    * see `periodsForClass` below. Every other level uses the full day.
    */
@@ -104,7 +104,7 @@ export class TimetableService {
     const settings = await this.getSettings();
     const fullDayPeriods = buildPeriods(settings.dayStartTime, settings.dayEndTime, settings.breaks);
     if (!fullDayPeriods.length) {
-      throw new BadRequestException('The configured school day has no schedulable periods — check Timetable Settings (day start/end and breaks)');
+      throw new BadRequestException('The configured school day has no schedulable periods: check Timetable Settings (day start/end and breaks)');
     }
     const periodTimesByIndex = new Map(fullDayPeriods.map((p) => [p.index, p]));
 
@@ -162,7 +162,7 @@ export class TimetableService {
     const armNameById = new Map(schoolClasses.flatMap((sc) => sc.arms.map((a) => [a.id, { armName: a.name, className: sc.name }])));
     const conflicts = outcomes
       .filter((o) => o.unplacedCount > 0)
-      .map((o) => ({ armId: o.armId, ...armNameById.get(o.armId)!, reason: 'Could not find a conflict-free schedule — likely a teacher is overloaded across too many classes' }));
+      .map((o) => ({ armId: o.armId, ...armNameById.get(o.armId)!, reason: 'Could not find a conflict-free schedule: likely a teacher is overloaded across too many classes' }));
 
     await this.prisma.db.$transaction(async (tx) => {
       await tx.timetableSlot.deleteMany({});
@@ -228,7 +228,7 @@ export class TimetableService {
     };
   }
 
-  /** For the TEACHER portal — every period they teach, across every class
+  /** For the TEACHER portal: every period they teach, across every class
    * arm, in one flat weekly list (not one grid per arm, since a teacher's
    * own view is "where am I, when", not "what does this class see"). */
   async getForCurrentTeacher() {
@@ -265,7 +265,7 @@ export class TimetableService {
     };
   }
 
-  /** For the STUDENT portal — their own class arm's grid. */
+  /** For the STUDENT portal: their own class arm's grid. */
   async getForCurrentStudent() {
     const userId = this.requestContext.getUserId();
     const student = await this.prisma.db.student.findUniqueOrThrow({ where: { userId }, select: { currentClassArmId: true } });
@@ -276,7 +276,7 @@ export class TimetableService {
     return this.gridForArm(student.currentClassArmId);
   }
 
-  /** For the PARENT portal — a specific linked child's grid. Caller
+  /** For the PARENT portal: a specific linked child's grid. Caller
    * (ParentPortalController) verifies the studentId belongs to this parent
    * before calling this, same pattern as childAssignments/childResults. */
   async getForStudent(studentId: string) {

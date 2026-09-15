@@ -28,7 +28,7 @@ export class CreateTeacherDto {
 
   /** If set, this teacher becomes the class teacher of this ClassArm.
    * Must belong to the same campus and must not already have a class
-   * teacher — both enforced server-side in StaffProfilesService, never
+   * teacher, both enforced server-side in StaffProfilesService, never
    * trusted from the client. */
   @IsOptional()
   @IsString()

@@ -14,7 +14,7 @@ export interface NotificationDispatchResult {
 
 /** One adapter per channel, all behind the same shape. `isConfigured`
  * false means NotificationService leaves the CommunicationLog row QUEUED
- * instead of calling send() — graceful degradation per Phase 4 rule #4:
+ * instead of calling send(): graceful degradation per Phase 4 rule #4:
  * in-app + history must keep working with zero external providers set up. */
 export interface NotificationProvider {
   readonly channel: CommunicationChannel;

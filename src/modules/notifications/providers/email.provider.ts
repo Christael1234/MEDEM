@@ -8,9 +8,9 @@ import {
 
 /**
  * Stub adapter. `EMAIL_PROVIDER` defaults to `none`, which keeps this
- * unconfigured — NotificationService then leaves the CommunicationLog row
+ * unconfigured: NotificationService then leaves the CommunicationLog row
  * QUEUED rather than calling send() or throwing. Real integration
- * (SendGrid, SES, etc.) is an explicit non-goal for this pass — wire a
+ * (SendGrid, SES, etc.) is an explicit non-goal for this pass, wire a
  * real provider only when asked for one.
  */
 @Injectable()
@@ -24,7 +24,7 @@ export class EmailProvider implements NotificationProvider {
 
   async send(_payload: NotificationDispatchPayload): Promise<NotificationDispatchResult> {
     throw new Error(
-      'EmailProvider has no real implementation yet — set EMAIL_PROVIDER and implement send() when a provider is chosen.',
+      'EmailProvider has no real implementation yet, set EMAIL_PROVIDER and implement send() when a provider is chosen.',
     );
   }
 }

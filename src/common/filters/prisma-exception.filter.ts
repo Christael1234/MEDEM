@@ -12,12 +12,12 @@ import { Response } from 'express';
 
 /**
  * Every service in this codebase leans on findUniqueOrThrow/delete/update
- * assuming a bad id turns into a clean 404 — but nothing was ever
+ * assuming a bad id turns into a clean 404, but nothing was ever
  * registered to actually translate Prisma's own "not found"
  * (PrismaClientKnownRequestError code P2025) into one, so it fell through
  * to Nest's default handler as a raw, unhelpful 500 everywhere. Only the
  * handful of codes services actually rely on are mapped; anything else
- * still surfaces as 500 — an unmapped Prisma error is more likely a real
+ * still surfaces as 500: an unmapped Prisma error is more likely a real
  * bug than something safe to relabel as a 400.
  */
 @Catch(Prisma.PrismaClientKnownRequestError)

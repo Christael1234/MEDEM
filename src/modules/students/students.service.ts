@@ -31,13 +31,13 @@ export class StudentsService {
       await this.classes.assertArmBelongsToTenant(dto.currentClassArmId);
     }
 
-    // At least one parent/guardian is required — either link an existing
+    // At least one parent/guardian is required: either link an existing
     // one (found via GET /guardians?search=, e.g. a sibling's parent
     // already on file) or provide a new one's name. A second guardian is
     // optional either way. class-validator can't express "one of these
     // two field groups" cleanly, so it's checked here.
     if (!dto.guardianId && !(dto.guardianFirstName && dto.guardianLastName)) {
-      throw new BadRequestException('A parent/guardian is required — search for an existing one or provide a name');
+      throw new BadRequestException('A parent/guardian is required: search for an existing one or provide a name');
     }
     if (dto.secondGuardianFirstName || dto.secondGuardianLastName || dto.secondGuardianId) {
       if (!dto.secondGuardianRelationship) {
@@ -61,7 +61,7 @@ export class StudentsService {
     );
     const passwordHash = await bcrypt.hash(DEFAULT_PORTAL_PASSWORD, 12);
 
-    // Login emails are generated up front (not inside the transaction) —
+    // Login emails are generated up front (not inside the transaction):
     // generateLoginEmail does its own collision check via prisma.raw,
     // matching how the student's own email above is resolved before the
     // transaction starts. Only a *newly created* guardian gets a login;
@@ -76,7 +76,7 @@ export class StudentsService {
 
     const { student, user, guardianLinks, guardianAccounts } = await this.prisma.db.$transaction(async (tx) => {
       // User.tenantId is nullable at the schema level, so (unlike Student)
-      // this doesn't need the tenantScopedCreate type-assertion trick — the
+      // this doesn't need the tenantScopedCreate type-assertion trick: the
       // extension still injects tenantId at runtime.
       const user = await tx.user.create({
         data: {
@@ -105,7 +105,7 @@ export class StudentsService {
 
       // Resolves an existing guardian by id (tenant ownership confirmed by
       // the tenant-scoping extension, same as any other tx.guardian call)
-      // or creates a new one — never both, id takes precedence. A newly
+      // or creates a new one, never both: id takes precedence. A newly
       // created guardian also gets a real portal login (account pre-built
       // above), same as the student itself.
       const resolveGuardian = async (opts: {
@@ -275,7 +275,7 @@ export class StudentsService {
   }
 
   /** Updates the student's own profile fields and, if a portal login is
-   * linked, keeps the User's display name in sync — CLAUDE.md rule #5
+   * linked, keeps the User's display name in sync: CLAUDE.md rule #5
    * treats name changes as a sensitive profile change, so it's audited. */
   async update(id: string, dto: UpdateStudentDto) {
     const before = await this.prisma.db.student.findUniqueOrThrow({ where: { id } });
@@ -317,13 +317,13 @@ export class StudentsService {
   }
 
   /** Science/Art stream is only meaningful once a student is actually in
-   * Senior Secondary — gated the same way promotion is gated on Third
+   * Senior Secondary: gated the same way promotion is gated on Third
    * Term, rather than letting a Nursery student get tagged by mistake.
    * Sets the stream flag and, if the student's class has an arm tagged
    * for the new stream (ClassArm.stream), moves them into a random one of
-   * those arms — recorded as StudentClassHistory, same "no silent
+   * those arms, recorded as StudentClassHistory, same "no silent
    * rewrite" discipline as promotion. Doesn't move them if the class has
-   * no arm tagged for that stream yet (admin hasn't configured one) —
+   * no arm tagged for that stream yet (admin hasn't configured one);
    * the stream flag still gets set either way. */
   private async applyStreamChange(id: string, stream: Stream) {
     const student = await this.prisma.db.student.findUniqueOrThrow({
@@ -359,7 +359,7 @@ export class StudentsService {
     return { before, student: updated };
   }
 
-  /** Admin-direct stream set — no review needed, PROPRIETOR/PRINCIPAL
+  /** Admin-direct stream set: no review needed, PROPRIETOR/PRINCIPAL
    * already have full authority over a student's record. Self-service
    * changes go through requestStreamChange/reviewStreamChangeRequest
    * instead (see those for why). */
@@ -376,8 +376,8 @@ export class StudentsService {
   }
 
   /** Self-service: only a student in their FIRST Senior Secondary class
-   * (ClassesService.isEntrySeniorSecondaryClass — "SS1") may request a
-   * switch, and only ever as a request — it takes an admin's approval to
+   * (ClassesService.isEntrySeniorSecondaryClass, "SS1") may request a
+   * switch, and only ever as a request: it takes an admin's approval to
    * actually change anything, same as it takes an admin to approve a
    * result before it's official. One pending request per student at a
    * time. */
@@ -418,7 +418,7 @@ export class StudentsService {
   }
 
   /** Admin queue (no studentId filter) or a student's own history (via
-   * StudentPortalController, which always passes their own id) — same
+   * StudentPortalController, which always passes their own id): same
    * query, scoped differently by the caller. */
   listStreamChangeRequests(status?: StreamChangeRequestStatus, studentId?: string) {
     return this.prisma.db.streamChangeRequest.findMany({
@@ -482,7 +482,7 @@ export class StudentsService {
   }
 
   /** Promotion/transfer: records StudentClassHistory and moves the
-   * student's currentClassArmId — CLAUDE.md treats this as an audited
+   * student's currentClassArmId: CLAUDE.md treats this as an audited
    * trail, not a silent field overwrite. */
   async promote(id: string, dto: PromoteStudentDto) {
     await this.classes.assertArmBelongsToTenant(dto.classArmId);
@@ -518,13 +518,13 @@ export class StudentsService {
     return student;
   }
 
-  /** End-of-session bulk promotion review — only runnable in Third Term
+  /** End-of-session bulk promotion review: only runnable in Third Term
    * (assertCurrentTermIsThird). Returns every ACTIVE student currently in
    * the arm plus a proposed target (the same-named arm in
    * SchoolClass.promotesToClass, if the admin set one up and a
    * same-named arm exists there) so the admin reviews/adjusts before
    * confirming rather than a blind one-click promote. A class with no
-   * promotesToClass is terminal — its students graduate instead. */
+   * promotesToClass is terminal; its students graduate instead. */
   async previewPromotion(classArmId: string, targetAcademicSessionId: string) {
     await this.academicSessions.assertCurrentTermIsThird();
     await this.classes.assertArmBelongsToTenant(classArmId);
@@ -557,7 +557,7 @@ export class StudentsService {
   /** Applies a reviewed promotion list. Each assignment with a
    * targetClassArmId moves that student (StudentClassHistory + a
    * currentClassArmId update, same write shape as promote()); one
-   * without graduates the student instead (status -> GRADUATED — there's
+   * without graduates the student instead (status -> GRADUATED; there's
    * no class to record history against). Looped and individually
    * audited/error-checked rather than one giant transaction, same
    * "bulk = many audited single writes" shape as the CBT/results
@@ -626,5 +626,96 @@ export class StudentsService {
     }
 
     return { promoted, graduated };
+  }
+
+  /** Mid-term data migration: each row is resolved (campus/class/arm
+   * looked up by name, since a spreadsheet from another system has no
+   * idea what our ids are) and then run through the exact same create()
+   * used by the single "+ Add student" flow — same numbering sequence,
+   * same login-account creation, same audit trail — so a bulk-imported
+   * student is indistinguishable from one added by hand. Each row is
+   * independent: one bad row (unknown class, missing guardian, etc.)
+   * fails on its own and the rest of the batch still goes through. */
+  async bulkImport(rows: Array<{
+    firstName: string; lastName: string; middleName?: string; dateOfBirth?: string; gender?: string;
+    campusName: string; className?: string; armName?: string;
+    guardianFirstName: string; guardianLastName: string; guardianEmail?: string; guardianPhone?: string;
+    guardianRelationship?: GuardianRelationship;
+  }>) {
+    const [campuses, classes] = await Promise.all([
+      this.prisma.db.campus.findMany(),
+      this.prisma.db.schoolClass.findMany({ include: { arms: true } }),
+    ]);
+    const campusByName = new Map(campuses.map((c) => [c.name.trim().toLowerCase(), c]));
+    const classByName = new Map(classes.map((c) => [c.name.trim().toLowerCase(), c]));
+
+    const results: Array<{ row: number; success: boolean; admissionNo?: string; studentId?: string; error?: string }> = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        const campus = campusByName.get(row.campusName.trim().toLowerCase());
+        if (!campus) throw new Error(`Unknown campus "${row.campusName}"`);
+
+        let currentClassArmId: string | undefined;
+        if (row.className) {
+          const schoolClass = classByName.get(row.className.trim().toLowerCase());
+          if (!schoolClass) throw new Error(`Unknown class "${row.className}"`);
+          if (row.armName) {
+            const arm = schoolClass.arms.find((a) => a.name.trim().toLowerCase() === row.armName!.trim().toLowerCase());
+            if (!arm) throw new Error(`Unknown arm "${row.armName}" in class "${row.className}"`);
+            currentClassArmId = arm.id;
+          }
+        }
+
+        const created = await this.create({
+          campusId: campus.id,
+          firstName: row.firstName,
+          lastName: row.lastName,
+          middleName: row.middleName,
+          dateOfBirth: row.dateOfBirth,
+          gender: row.gender,
+          currentClassArmId,
+          guardianFirstName: row.guardianFirstName,
+          guardianLastName: row.guardianLastName,
+          guardianEmail: row.guardianEmail,
+          guardianPhone: row.guardianPhone,
+          guardianRelationship: row.guardianRelationship || 'OTHER',
+        });
+        results.push({ row: i + 1, success: true, admissionNo: created.admissionNo, studentId: created.id });
+      } catch (err) {
+        results.push({ row: i + 1, success: false, error: err instanceof Error ? err.message : 'Unknown error' });
+      }
+    }
+
+    const successCount = results.filter((r) => r.success).length;
+    await this.audit.log({
+      action: 'STUDENTS_BULK_IMPORTED',
+      entityType: 'Student',
+      entityId: 'bulk',
+      after: { totalRows: rows.length, successCount, failureCount: rows.length - successCount },
+    });
+
+    return { totalRows: rows.length, successCount, failureCount: rows.length - successCount, results };
+  }
+
+  /** The last 20 bulk-import runs for this tenant, read straight back
+   * off the audit trail bulkImport() writes to rather than a second,
+   * separate history table to keep in sync. Uses prisma.raw + an
+   * explicit tenantId filter (not prisma.db): AuditLog.tenantId is
+   * nullable for platform-level actions, so the tenant-scoping
+   * extension doesn't auto-scope it (see AuditService's own doc
+   * comment). */
+  async bulkImportHistory() {
+    const tenantId = this.requestContext.getTenantId();
+    const logs = await this.prisma.raw.auditLog.findMany({
+      where: { tenantId, action: 'STUDENTS_BULK_IMPORTED' },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    });
+    return logs.map((l) => ({
+      date: l.createdAt,
+      ...(l.after as { totalRows: number; successCount: number; failureCount: number }),
+    }));
   }
 }

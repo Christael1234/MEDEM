@@ -1,4 +1,4 @@
-// SchoolOS — Prisma schema for Phase 0 (Foundation) + Phase 1 (Core School)
+// SchoolOS: Prisma schema for Phase 0 (Foundation) + Phase 1 (Core School)
 //
 // See CLAUDE.md for the rules this schema encodes:
 // - every tenant-owned table carries tenantId, indexed
@@ -20,7 +20,7 @@ datasource db {
 // ─────────────────────────────────────────────────────────────────────────
 
 /// A school group. All tenant-owned records reference tenantId, either
-/// directly or transitively — never trust a client-supplied tenantId;
+/// directly or transitively; never trust a client-supplied tenantId;
 /// it must come from the authenticated session.
 model Tenant {
   id        String       @id @default(uuid())
@@ -28,12 +28,20 @@ model Tenant {
   slug      String       @unique
   status    TenantStatus @default(ACTIVE)
   timezone  String       @default("Africa/Lagos")
-  /// Admin-customizable color scheme (Settings → Appearance) — applied
+  /// Admin-customizable color scheme (Settings > Appearance), applied
   /// tenant-wide as CSS custom properties (--brand-primary/--brand-sidebar
   /// in styles.css), never resolves for another tenant since it's read via
   /// GET /tenants/me/branding, scoped to the caller's own tenantId.
   primaryColor String     @default("#176a50")
   sidebarColor String     @default("#123a31")
+  /// Rest of Settings > Branding: a pasted logo image URL (no file-upload
+  /// storage module exists yet, see CLAUDE.md's Phase 0 file-storage note
+  /// — this is the honest scoped-down version of that) and the copy shown
+  /// on both login screens' visual panel. Same tenant-scoping rules as the
+  /// colors above: read/written only via /tenants/me/branding.
+  logoUrl       String?
+  loginHeadline String  @default("Welcome to your school portal.")
+  loginSubtext  String  @default("Sign in to continue.")
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
@@ -61,6 +69,7 @@ model Tenant {
   gradeBands        GradeBand[]
   streamChangeRequests StreamChangeRequest[]
   timetableSettings TimetableSettings?
+  documentTemplates DocumentTemplate[]
 
   @@map("tenants")
 }
@@ -72,7 +81,7 @@ enum TenantStatus {
 }
 
 /// A physical campus/branch under a Tenant. A school group with a single
-/// site still gets exactly one Campus row — nothing downstream should
+/// site still gets exactly one Campus row: nothing downstream should
 /// special-case "no campus."
 model Campus {
   id        String   @id @default(uuid())
@@ -116,7 +125,7 @@ enum Role {
 /// Login identity. Role grants module-level actions (enforced in app code
 /// via guards, not in the schema); UserCampusScope narrows that further to
 /// specific campuses. A Proprietor with no scope rows has access to every
-/// campus in their tenant — narrower roles (e.g. Bursar for one campus)
+/// campus in their tenant; narrower roles (e.g. Bursar for one campus)
 /// get explicit UserCampusScope rows.
 model User {
   id           String  @id @default(uuid())
@@ -130,7 +139,7 @@ model User {
   phone        String?
   isActive     Boolean @default(true)
 
-  // MFA — mandatory for PROPRIETOR, BURSAR, HR_ADMIN, SUPER_ADMIN at the
+  // MFA: mandatory for PROPRIETOR, BURSAR, HR_ADMIN, SUPER_ADMIN at the
   // application layer; schema supports it for every role.
   mfaEnabled Boolean @default(false)
   mfaSecret  String?
@@ -154,6 +163,7 @@ model User {
   communicationsReceived CommunicationLog[] @relation("CommunicationRecipient")
   announcementsCreated   Announcement[]
   streamChangeRequestsReviewed StreamChangeRequest[]
+  documentTemplatesUpdated DocumentTemplate[] @relation("DocumentTemplateUpdatedBy")
 
   @@index([tenantId])
   @@map("users")
@@ -228,7 +238,7 @@ model NumberingSequence {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Core School — Academic structure
+// Core School: Academic structure
 // ─────────────────────────────────────────────────────────────────────────
 
 model AcademicSession {
@@ -281,7 +291,7 @@ enum SchoolLevel {
 }
 
 /// Senior Secondary science/art streaming. Only meaningful once a student's
-/// current class is SENIOR_SECONDARY — StudentsService.setStream rejects
+/// current class is SENIOR_SECONDARY: StudentsService.setStream rejects
 /// setting it otherwise. Subject.streams uses the same enum to tag which
 /// stream(s) a subject belongs to.
 enum Stream {
@@ -290,7 +300,7 @@ enum Stream {
 }
 
 /// promotesToClassId is the admin-defined "next class" in the promotion
-/// chain (e.g. JSS 1 -> JSS 2) — set once when levels are configured, not
+/// chain (e.g. JSS 1 -> JSS 2), set once when levels are configured, not
 /// derived from name/order guessing. null means terminal: promoting a
 /// student out of this class marks them GRADUATED instead of moving them
 /// (see StudentsService's bulk promotion).
@@ -323,11 +333,11 @@ model ClassArm {
   name           String // e.g. "Gold"
   classTeacherId String?
   classTeacher   StaffProfile? @relation(fields: [classTeacherId], references: [id], onDelete: SetNull)
-  /// Which stream this arm is for, at Senior Secondary — admin-tagged
+  /// Which stream this arm is for, at Senior Secondary; admin-tagged
   /// (e.g. "Gold" -> SCIENCE, "Diamond" -> ART). null means not
   /// stream-specific (the normal case outside Senior Secondary). Random
   /// arm assignment for a Senior Secondary student is only drawn from
-  /// arms tagged for their chosen stream — see StudentsService.applyStreamChange.
+  /// arms tagged for their chosen stream: see StudentsService.applyStreamChange.
   stream         Stream?
   createdAt      DateTime      @default(now())
 
@@ -345,7 +355,7 @@ model ClassArm {
 
 /// levels: which SchoolLevel(s) this subject is taught at (e.g. "Further
 /// Mathematics" is SENIOR_SECONDARY only; "Mathematics" spans several).
-/// Empty means "not yet configured" — SubjectsService.assignTeacher
+/// Empty means "not yet configured"; SubjectsService.assignTeacher
 /// treats that as "any level" rather than blocking every assignment.
 model Subject {
   id        String        @id @default(uuid())
@@ -356,7 +366,7 @@ model Subject {
   levels    SchoolLevel[]
   /// Which stream(s) this subject belongs to at Senior Secondary (e.g.
   /// Physics -> [SCIENCE], Literature -> [ART]). Empty means "any
-  /// stream" — same "empty = unconfigured, not blocking" convention as
+  /// stream", same "empty = unconfigured, not blocking" convention as
   /// `levels` (see SubjectsService.listSubjects).
   streams   Stream[]      @default([])
   createdAt DateTime      @default(now())
@@ -375,7 +385,7 @@ model Subject {
 
 /// Which teacher may enter/submit results and take attendance for which
 /// class + subject. This is the scoping table the Teacher role's guards
-/// should check against — not a hardcoded "teacher owns a class" field.
+/// should check against, not a hardcoded "teacher owns a class" field.
 model TeacherSubjectAssignment {
   id             String       @id @default(uuid())
   staffProfileId String
@@ -392,10 +402,10 @@ model TeacherSubjectAssignment {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// People — Staff, Students, Guardians
+// People: Staff, Students, Guardians
 // ─────────────────────────────────────────────────────────────────────────
 
-/// Thin shell for now — deep HR fields (contracts, qualifications,
+/// Thin shell for now; deep HR fields (contracts, qualifications,
 /// documents, leave, salary structure) land in Phase 3. Every staff member
 /// with system access has a linked User; give this table a stable id
 /// other modules (payroll, HR) can reference later without migration pain.
@@ -408,7 +418,7 @@ model StaffProfile {
   campusId       String
   campus         Campus    @relation(fields: [campusId], references: [id], onDelete: Cascade)
   staffId        String // human-facing employee number, generated via NumberingSequence
-  employmentType String? // e.g. "full_time", "part_time", "contract" — kept loose pre-Phase-3
+  employmentType String? // e.g. "full_time", "part_time", "contract"; kept loose pre-Phase-3
   department     String?
   position       String?
   dateJoined     DateTime?
@@ -461,7 +471,7 @@ model Student {
   currentClassArmId String?
   currentClassArm   ClassArm? @relation(fields: [currentClassArmId], references: [id], onDelete: SetNull)
 
-  /// Science/Art stream — only settable while the student's current class
+  /// Science/Art stream, only settable while the student's current class
   /// is SENIOR_SECONDARY (StudentsService.setStream). Settable by the
   /// student themselves (student portal) or by PROPRIETOR/PRINCIPAL.
   stream Stream?
@@ -514,10 +524,10 @@ enum StreamChangeRequestStatus {
 
 /// Self-service stream-switch requests. Only a student in their first
 /// Senior Secondary class may create one (ClassesService.isEntrySeniorSecondaryClass
-/// — StudentsService.requestStreamChange enforces it); an admin
+/// StudentsService.requestStreamChange enforces it); an admin
 /// (PROPRIETOR/PRINCIPAL) reviews and approves/rejects. Approving moves
 /// Student.stream and, if the class has an arm tagged for the new
-/// stream, the student into it (StudentsService.applyStreamChange) — a
+/// stream, the student into it (StudentsService.applyStreamChange), a
 /// request never changes anything on its own until reviewed, same
 /// "no silent rewrite" discipline as promotion.
 model StreamChangeRequest {
@@ -601,7 +611,7 @@ enum AttendanceStatus {
 }
 
 /// A TEACHER's correction lands PENDING and has no effect on the
-/// "official" status until a PROPRIETOR/PRINCIPAL reviews it — a
+/// "official" status until a PROPRIETOR/PRINCIPAL reviews it, a
 /// PROPRIETOR/PRINCIPAL correction is self-approved (they are the admin).
 /// PENDING/REJECTED rows never change what AttendanceService.list()
 /// resolves as current; only the latest APPROVED row (or the original, if
@@ -612,7 +622,7 @@ enum AttendanceCorrectionStatus {
   REJECTED
 }
 
-/// Corrections must not overwrite history — write a new record with
+/// Corrections must not overwrite history: write a new record with
 /// correctionOf pointing at the original, correctionReason populated, and
 /// an AuditLog entry. Application code enforces this; the schema just
 /// carries the fields.
@@ -648,7 +658,7 @@ model AttendanceRecord {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Results (basic — full grading-scale configuration is a later refinement)
+// Results (basic; full grading-scale configuration is a later refinement)
 // ─────────────────────────────────────────────────────────────────────────
 
 enum ResultStatus {
@@ -659,7 +669,7 @@ enum ResultStatus {
 }
 
 /// State machine: DRAFT -> SUBMITTED -> APPROVED -> PUBLISHED. Teachers may
-/// create/submit; only Principal/Proprietor may approve or publish —
+/// create/submit; only Principal/Proprietor may approve or publish;
 /// enforce in guards, not here. Any status transition must be audited.
 model Result {
   id                String          @id @default(uuid())
@@ -698,7 +708,7 @@ model Result {
 
 /// One band of a school's grading scale (e.g. "A" = 70-100). Proprietor-
 /// managed; Result.grade is computed against these bands once, at result
-/// creation time, and stored — a later scale edit never retroactively
+/// creation time, and stored: a later scale edit never retroactively
 /// rewrites a grade already on the books (same "no silent rewrite of the
 /// past" principle as everything else ledger-like in this schema).
 model GradeBand {
@@ -718,7 +728,7 @@ model GradeBand {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Phase 4 — Portals & Communication
+// Phase 4: Portals & Communication
 // See PHASE_4_PORTALS_COMMUNICATION.md. Built on top of Phase 0+1 only;
 // nothing here assumes fees/payroll (Phase 2/3) exist.
 // ─────────────────────────────────────────────────────────────────────────
@@ -789,7 +799,7 @@ model MessageTemplate {
   @@map("message_templates")
 }
 
-/// One row per actual send attempt — the delivery-status/history record
+/// One row per actual send attempt, the delivery-status/history record
 /// the spec asks for. Distinct from AuditLog: this is operational
 /// communication history, not the sensitive-action audit trail.
 model CommunicationLog {
@@ -809,7 +819,7 @@ model CommunicationLog {
   body              String
   status            CommunicationStatus  @default(QUEUED)
   providerRef       String?
-  dedupeKey         String // entityType+entityId+eventType+recipientId — idempotent sends
+  dedupeKey         String // entityType+entityId+eventType+recipientId: idempotent sends
   sentAt            DateTime?
   createdAt         DateTime             @default(now())
 
@@ -830,7 +840,7 @@ model Assignment {
   subjectId               String?
   subject                 Subject?      @relation(fields: [subjectId], references: [id], onDelete: SetNull)
   // Nullable: PROPRIETOR/PRINCIPAL can post administratively without
-  // being a teacher (no StaffProfile of their own) — see AssignmentsService.
+  // being a teacher (no StaffProfile of their own); see AssignmentsService.
   createdByStaffProfileId String?
   createdByStaffProfile   StaffProfile? @relation(fields: [createdByStaffProfileId], references: [id], onDelete: SetNull)
   title                   String
@@ -846,7 +856,7 @@ model Assignment {
 }
 
 /// A teacher's lesson note for one of their assigned (class arm, subject)
-/// pairs, with zero or more attached resources. Teacher-authored only —
+/// pairs, with zero or more attached resources. Teacher-authored only,
 /// unlike Assignment, PROPRIETOR/PRINCIPAL don't post lessons themselves,
 /// only view them (see LessonsService).
 model Lesson {
@@ -871,7 +881,7 @@ model Lesson {
   @@map("lessons")
 }
 
-/// One hop from tenantId — reached only through its parent Lesson, which
+/// One hop from tenantId, reached only through its parent Lesson, which
 /// is itself tenant-scoped. Same pattern as ClassArm/TeacherSubjectAssignment;
 /// see tenant-scoping.extension.ts's doc comment for why this deliberately
 /// has no tenantId column of its own.
@@ -889,7 +899,7 @@ model LessonResource {
 }
 
 /// Drives bulk announcements. `audienceRefId` is interpreted per
-/// `audience` (a Campus id, SchoolClass id, ClassArm id, etc.) —
+/// `audience` (a Campus id, SchoolClass id, ClassArm id, etc.),
 /// recipients are resolved from the tenant-scoped roster at send time,
 /// never accepted as a client-supplied list (rule #2 in this phase's doc).
 model Announcement {
@@ -912,7 +922,7 @@ model Announcement {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// CBT (computer-based tests) — teacher-authored, principal/proprietor
+// CBT (computer-based tests): teacher-authored, principal/proprietor
 // reviewed before students can attempt. State machine: DRAFT -> SUBMITTED
 // -> PUBLISHED, with SUBMITTED -> DRAFT on rejection (rejectionReason set).
 // ─────────────────────────────────────────────────────────────────────────
@@ -933,7 +943,7 @@ enum CbtAttemptStatus {
 /// effectively a result) rather than Lesson/Assignment's post-immediately
 /// model: DRAFT -> SUBMITTED (teacher) -> PUBLISHED (principal/proprietor),
 /// or back to DRAFT with rejectionReason set. Only a PUBLISHED exam is ever
-/// visible to STUDENT/PARENT — see CbtExamsService.assertReadAccess.
+/// visible to STUDENT/PARENT; see CbtExamsService.assertReadAccess.
 model CbtExam {
   id                      String        @id @default(uuid())
   tenantId                String
@@ -961,7 +971,7 @@ model CbtExam {
   @@map("cbt_exams")
 }
 
-/// One hop from tenantId — reached only through its parent CbtExam, itself
+/// One hop from tenantId, reached only through its parent CbtExam, itself
 /// tenant-scoped. Same pattern as LessonResource; see
 /// tenant-scoping.extension.ts's doc comment.
 model CbtQuestion {
@@ -979,7 +989,7 @@ model CbtQuestion {
 }
 
 /// isCorrect must never be sent to a STUDENT/PARENT before/while an exam is
-/// in progress — CbtExamsService strips it for those roles. One hop from
+/// in progress; CbtExamsService strips it for those roles. One hop from
 /// tenantId, same as CbtQuestion.
 model CbtOption {
   id         String      @id @default(uuid())
@@ -995,7 +1005,7 @@ model CbtOption {
   @@map("cbt_options")
 }
 
-/// One row per (exam, student) — the unique constraint is what makes
+/// One row per (exam, student); the unique constraint is what makes
 /// "start attempt" idempotent/resumable rather than creating duplicates.
 /// One hop from tenantId, reached through examId/studentId.
 model CbtAttempt {
@@ -1020,7 +1030,7 @@ model CbtAttempt {
 
 /// Graded at submit time (CbtExamsService.submitAttempt computes isCorrect
 /// by comparing selectedOptionId against the question's flagged-correct
-/// option) — never recomputed on read. One hop from tenantId.
+/// option), never recomputed on read. One hop from tenantId.
 model CbtAnswer {
   id               String      @id @default(uuid())
   attemptId        String
@@ -1037,20 +1047,20 @@ model CbtAnswer {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Timetable — generated from TeacherSubjectAssignment, one weekly grid per
+// Timetable: generated from TeacherSubjectAssignment, one weekly grid per
 // ClassArm. Regenerating replaces every slot for the tenant; a slot is
 // never hand-edited into a state the generator couldn't have produced,
 // since the two uniques below are exactly the conflict rules the generator
 // enforces (a class arm sees one subject per period, a teacher is in one
-// place per period) — the DB is a second line of defense, not just the
+// place per period), the DB is a second line of defense, not just the
 // generator's own bookkeeping.
 // ─────────────────────────────────────────────────────────────────────────
 
-/// One per tenant — the shape of the school day the generator builds
+/// One per tenant: the shape of the school day the generator builds
 /// periods against (TimetableService.getSettings lazily creates one with
 /// sensible defaults on first read, rather than requiring a seed step).
 /// Period duration is fixed at 30 minutes app-wide (TIMETABLE.PERIOD_DURATION_MINUTES,
-/// not stored here) — only the day's start/end and its break windows are
+/// not stored here); only the day's start/end and its break windows are
 /// admin-configurable.
 model TimetableSettings {
   id            String   @id @default(uuid())
@@ -1066,10 +1076,10 @@ model TimetableSettings {
 }
 
 /// A named window (e.g. "Short break", "Lunch") the generator treats as
-/// non-schedulable — TimetableGenerator.buildPeriods jumps straight from
+/// non-schedulable; TimetableGenerator.buildPeriods jumps straight from
 /// a break's start to its end rather than placing a period across it. One
 /// hop from tenantId, reached through its parent TimetableSettings (same
-/// pattern as ClassArm/Term — see tenant-scoping.extension.ts).
+/// pattern as ClassArm/Term (see tenant-scoping.extension.ts).
 model TimetableBreak {
   id                  String            @id @default(uuid())
   timetableSettingsId String
@@ -1081,6 +1091,42 @@ model TimetableBreak {
 
   @@index([timetableSettingsId])
   @@map("timetable_breaks")
+}
+
+enum DocumentTemplateStatus {
+  DRAFT
+  PUBLISHED
+}
+
+/// A printable/exportable document's editable body (report card, fee
+/// invoice, admission letter, payment receipt, ...), keyed by a stable
+/// `key` so the report-card generator (etc.) always knows which template
+/// to render against, independent of its human-facing `name`. Editing
+/// never overwrites the published version in place: it bumps `version`
+/// and flips to DRAFT, so whatever is currently live keeps rendering
+/// exactly as-is for anyone generating a document until a PROPRIETOR
+/// deliberately publishes the new draft (mirrors GradingScale's "never
+/// recalculate published records" philosophy).
+model DocumentTemplate {
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  key         String // stable identifier, e.g. "REPORT_CARD"
+  name        String
+  content     String // template body, "{{merge.field}}" placeholders
+  mergeFields String[] // documents which placeholders this template supports
+
+  status      DocumentTemplateStatus @default(DRAFT)
+  version     Int                    @default(1)
+  updatedById String?
+  updatedBy   User?                  @relation("DocumentTemplateUpdatedBy", fields: [updatedById], references: [id])
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  @@unique([tenantId, key])
+  @@index([tenantId])
+  @@map("document_templates")
 }
 
 model TimetableSlot {
@@ -1095,7 +1141,7 @@ model TimetableSlot {
   staffProfile   StaffProfile @relation(fields: [staffProfileId], references: [id], onDelete: Cascade)
   dayOfWeek      Int // 1=Monday .. 5=Friday
   periodIndex    Int // 0-based index into the day's period list (8:00am-2:00pm, 8 periods)
-  startTime      String // "08:00", 24h HH:mm — denormalized for display, derived from periodIndex at generation time
+  startTime      String // "08:00", 24h HH:mm; denormalized for display, derived from periodIndex at generation time
   endTime        String
   createdAt      DateTime     @default(now())
 

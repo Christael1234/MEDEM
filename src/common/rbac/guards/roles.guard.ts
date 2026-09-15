@@ -13,7 +13,7 @@ import { ROLES_KEY } from '../decorators/roles.decorator';
 /**
  * Fails closed: every protected route must carry either @Roles(...) or
  * @AllowAnyAuthenticatedRole(). A route with neither is a bug, not an
- * open endpoint — this is what "deny by default" (CLAUDE.md rule #3)
+ * open endpoint. This is what "deny by default" (CLAUDE.md rule #3)
  * means in practice.
  */
 @Injectable()
@@ -47,7 +47,7 @@ export class RolesGuard implements CanActivate {
 
     if (!requiredRoles || requiredRoles.length === 0) {
       throw new ForbiddenException(
-        `${request.method} ${request.url} declares no @Roles() or @AllowAnyAuthenticatedRole() — access denied by default`,
+        `${request.method} ${request.url} declares no @Roles() or @AllowAnyAuthenticatedRole(), access denied by default`,
       );
     }
 

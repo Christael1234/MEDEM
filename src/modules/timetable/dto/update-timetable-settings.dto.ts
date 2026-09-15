@@ -23,7 +23,7 @@ export class UpdateTimetableSettingsDto {
   @Matches(HHMM, { message: 'dayEndTime must be 24h HH:mm' })
   dayEndTime?: string;
 
-  /** Full replacement — the whole list is re-created on every save, same
+  /** Full replacement: the whole list is re-created on every save, same
    * "replace, don't merge" rule as the timetable itself (a break list is a
    * small, admin-curated set, not something appended to incrementally). */
   @IsOptional()

@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common
 import { StreamChangeRequestStatus, StudentStatus } from '@prisma/client';
 import { AllowAnyAuthenticatedRole } from '../../common/rbac/decorators/allow-any-role.decorator';
 import { Roles } from '../../common/rbac/decorators/roles.decorator';
+import { BulkImportStudentsDto } from './dto/bulk-import-students.dto';
 import { BulkPromoteDto } from './dto/bulk-promote.dto';
 import { CreateStudentDto } from './dto/create-student.dto';
 import { PromoteStudentDto } from './dto/promote-student.dto';
@@ -31,7 +32,7 @@ export class StudentsController {
     return this.studentsService.list({ campusId, classArmId, status });
   }
 
-  // Must come before ':id' below — Nest matches routes in declaration
+  // Must come before ':id' below: Nest matches routes in declaration
   // order, so a literal 'promotion-preview' segment has to be registered
   // first or it would be swallowed as an :id value.
   @Roles('PROPRIETOR', 'PRINCIPAL')
@@ -43,12 +44,19 @@ export class StudentsController {
     return this.studentsService.previewPromotion(classArmId, targetAcademicSessionId);
   }
 
-  // Same route-order reasoning as 'promotion-preview' above — 'stream-requests'
+  // Same route-order reasoning as 'promotion-preview' above: 'stream-requests'
   // has to be declared before ':id' or it gets swallowed as an id value.
   @Roles('PROPRIETOR', 'PRINCIPAL')
   @Get('stream-requests')
   listStreamRequests(@Query('status') status?: StreamChangeRequestStatus) {
     return this.studentsService.listStreamChangeRequests(status);
+  }
+
+  // Same route-order reasoning: must come before ':id'.
+  @Roles('PROPRIETOR', 'PRINCIPAL')
+  @Get('bulk-import-history')
+  bulkImportHistory() {
+    return this.studentsService.bulkImportHistory();
   }
 
   @Roles('PROPRIETOR', 'PRINCIPAL')
@@ -91,5 +99,11 @@ export class StudentsController {
   @Post('promote-bulk')
   bulkPromote(@Body() dto: BulkPromoteDto) {
     return this.studentsService.bulkPromote(dto);
+  }
+
+  @Roles('PROPRIETOR', 'PRINCIPAL')
+  @Post('bulk-import')
+  bulkImport(@Body() dto: BulkImportStudentsDto) {
+    return this.studentsService.bulkImport(dto.rows);
   }
 }

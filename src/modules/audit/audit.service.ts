@@ -13,7 +13,7 @@ export interface AuditLogParams {
 /**
  * Canonical writer for the AuditLog table (CLAUDE.md rule #5: payments,
  * payroll actions, results, permission changes, and sensitive profile
- * changes must be audited). Writes via PrismaService.raw deliberately —
+ * changes must be audited). Writes via PrismaService.raw deliberately:
  * AuditLog.tenantId is nullable for platform-level (SUPER_ADMIN) actions,
  * which the tenant-scoping extension would otherwise reject outright.
  * tenantId/actorId still come only from RequestContextService, never from

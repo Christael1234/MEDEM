@@ -3,7 +3,7 @@ import { AllowAnyAuthenticatedRole } from '../../common/rbac/decorators/allow-an
 import { RequestContextService } from '../../common/context/request-context';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
-/** "My notices" for any authenticated role — scoped by recipientUserId
+/** "My notices" for any authenticated role, scoped by recipientUserId
  * from the session, never a request parameter. */
 @Controller('notifications')
 export class NotificationsController {

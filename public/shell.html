@@ -1,17 +1,17 @@
 <div class="app-shell">
   <aside class="sidebar">
     <div class="sidebar-top">
-      <a class="brand" href="dashboard.html" aria-label="SchoolOS home"><span class="brand-mark">S</span><span>School<span>OS</span></span></a>
-      <button id="sidebarCollapseBtn" class="sidebar-collapse-btn" aria-label="Collapse sidebar" title="Collapse sidebar">«</button>
+      <a class="brand" href="dashboard.html" aria-label="SchoolOS home"><span class="brand-mark"><i class="fa-solid fa-graduation-cap"></i></span><span>School<span>OS</span></span></a>
+      <button id="sidebarCollapseBtn" class="sidebar-collapse-btn" aria-label="Collapse sidebar" title="Collapse sidebar"><i class="fa-solid fa-chevron-left"></i></button>
     </div>
-    <div class="school-switcher"><div class="school-avatar">GS</div><div><strong>Greenfield Schools</strong><small>Ikoyi Campus</small></div><span class="chevron">⌄</span></div>
+    <div class="school-switcher"><div class="school-avatar" id="schoolSwitcherAvatar">S</div><div><strong id="schoolSwitcherName">SchoolOS</strong></div><span class="chevron"><i class="fa-solid fa-chevron-down"></i></span></div>
     <nav aria-label="Primary navigation" id="mainNav"></nav>
-    <div class="sidebar-bottom"><a href="#help">? &nbsp; Help &amp; support</a><div class="profile"><div class="profile-photo" id="profileInitials">··</div><div><strong id="profileName">—</strong><small id="profileRole">—</small></div><span>···</span></div></div>
+    <div class="sidebar-bottom"><a href="#help"><i class="fa-regular fa-circle-question"></i> &nbsp; Help &amp; support</a><div class="profile"><div class="profile-photo" id="profileInitials">··</div><div><strong id="profileName">—</strong><small id="profileRole">—</small></div><span><i class="fa-solid fa-ellipsis"></i></span></div></div>
   </aside>
   <main>
     <header class="topbar">
-      <div class="context"><button id="sessionYearBtn">2025/2026 <span>⌄</span></button><i></i><button id="sessionTermBtn">Third term <span>⌄</span></button></div>
-      <div class="top-actions"><small id="sessionBadge" style="color:#6b7a74;font:500 11px var(--sans)"></small><button class="icon-button" id="topbarSearchBtn" aria-label="Search">⌕</button><button class="icon-button notification" aria-label="Notifications">♧<em></em></button><button class="outline-button" id="logoutButton">Log out</button></div>
+      <div class="context"><button id="sessionYearBtn">2025/2026 <span><i class="fa-solid fa-chevron-down"></i></span></button><i></i><button id="sessionTermBtn">Third term <span><i class="fa-solid fa-chevron-down"></i></span></button></div>
+      <div class="top-actions"><small id="sessionBadge" style="color:#6b7a74;font:500 11px var(--sans)"></small><button class="icon-button" id="topbarSearchBtn" aria-label="Search"><i class="fa-solid fa-magnifying-glass"></i></button><div class="notif-wrap"><button class="icon-button notification" id="notificationBtn" aria-label="Notifications" aria-haspopup="true" aria-expanded="false"><i class="fa-regular fa-bell"></i><em id="notifBadge" hidden></em></button><div class="notif-panel" id="notifPanel" hidden></div></div><button class="outline-button" id="logoutButton">Log out</button></div>
     </header>
     <div id="page-slot"></div>
   </main>

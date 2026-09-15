@@ -71,7 +71,7 @@ export class UsersService {
   }
 
   /** Campus IS tenant-scoped, so this query can only ever return campuses
-   * belonging to the caller's own tenant — if fewer rows come back than
+   * belonging to the caller's own tenant: if fewer rows come back than
    * campusIds requested, at least one id was invalid or belongs to
    * another tenant (rule #1: tenant isolation is absolute). */
   private async assertCampusesInTenant(campusIds: string[]): Promise<void> {

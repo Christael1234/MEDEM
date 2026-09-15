@@ -3,11 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SchoolOS — Control Center</title>
+    <title>SchoolOS: Control Center</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=modules-v12" />
+    <link rel="stylesheet" href="styles.css?v=modules-v20" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" /></noscript>
   </head>
   <body>
     <div id="shell-root"></div>
@@ -24,18 +26,18 @@
 
         <section class="metrics"><div class="section-title"><h2>School pulse</h2><div class="range-toggle"><button class="selected">This term</button><button>Last term</button></div></div><div class="metric-grid">
           <article class="metric" data-scope="fees"><p>Fee revenue</p><div class="metric-value">Coming soon</div><small>Fees & payments isn’t built on the backend yet</small></article>
-          <article class="metric" data-scope="students"><p>Students</p><div class="metric-value" id="dashStudentsCount">—</div><small>Attendance trend — coming soon</small></article>
-          <article class="metric" data-scope="staff"><p>Staff</p><div class="metric-value" id="dashStaffCount">—</div><small>Attendance & document tracking — coming soon</small></article>
+          <article class="metric" data-scope="students"><p>Students</p><div class="metric-value" id="dashStudentsCount">—</div><small>Attendance trend: coming soon</small></article>
+          <article class="metric" data-scope="staff"><p>Staff</p><div class="metric-value" id="dashStaffCount">—</div><small>Attendance & document tracking: coming soon</small></article>
           <article class="metric" data-scope="payroll"><p>Payroll</p><div class="metric-value">Coming soon</div><small>Payroll isn’t built on the backend yet</small></article>
         </div></section>
 
-        <section class="lower-grid"><article class="card collection-card" data-scope="fees"><div class="section-title"><div><p class="eyebrow">Money</p><h2>Fee collection</h2></div></div><div class="empty-state"><span class="mini-avatar">✓</span><h3>Coming soon</h3><p>Fees & payments isn’t built on the backend yet — this card will show real collection figures once it is.</p></div></article>
+        <section class="lower-grid"><article class="card collection-card" data-scope="fees"><div class="section-title"><div><p class="eyebrow">Money</p><h2>Fee collection</h2></div></div><div class="empty-state"><span class="mini-avatar">✓</span><h3>Coming soon</h3><p>Fees & payments isn’t built on the backend yet. This card will show real collection figures once it is.</p></div></article>
           <article class="card campus-card" data-scope="finance"><div class="section-title"><div><p class="eyebrow">Group view</p><h2>Campus comparison</h2></div></div><table><thead><tr><th>Campus</th><th>Students</th><th>Collection</th><th>Attendance</th></tr></thead><tbody id="dashCampusRows"><tr><td colspan="4">Loading…</td></tr></tbody></table></article></section>
         <section class="role-workspace"><div class="section-title"><div><p class="eyebrow">Role workspace</p><h2 id="workspaceTitle">Your work, organised</h2></div></div><div class="workspace-grid" id="workspaceGrid"></div></section>
       </section>
     </template>
 
-    <script src="shared.js?v=6"></script>
-    <script src="dashboard.js?v=3"></script>
+    <script src="shared.js?v=16"></script>
+    <script src="dashboard.js?v=5"></script>
   </body>
 </html>

@@ -1,4 +1,4 @@
-// Finance module — no dedicated backend or mock logic in the original app
+// Finance module, no dedicated backend or mock logic in the original app
 // either; this was always the generic mock page keyed off the "Finance"
 // label. Nothing to port beyond the route.
 (function () {

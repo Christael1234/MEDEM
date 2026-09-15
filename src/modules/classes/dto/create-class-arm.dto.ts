@@ -12,7 +12,7 @@ export class CreateClassArmDto {
   @IsString()
   classTeacherId?: string;
 
-  /** Which Senior Secondary stream this arm is for — only meaningful when
+  /** Which Senior Secondary stream this arm is for: only meaningful when
    * the parent class is SENIOR_SECONDARY; irrelevant (and ignored by
    * random-arm-assignment) otherwise. */
   @IsOptional()

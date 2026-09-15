@@ -14,7 +14,7 @@ export class LessonsService {
     private readonly requestContext: RequestContextService,
   ) {}
 
-  /** Teacher-authored only (@Roles('TEACHER') at the controller) —
+  /** Teacher-authored only (@Roles('TEACHER') at the controller),
    * unlike Assignment, PROPRIETOR/PRINCIPAL don't post lessons, so there's
    * no nullable-staffProfile case to handle here. */
   async create(dto: CreateLessonDto) {
@@ -52,7 +52,7 @@ export class LessonsService {
     });
   }
 
-  /** Adding a resource is restricted to the lesson's own author — same
+  /** Adding a resource is restricted to the lesson's own author, same
    * ownership check as AssignmentsService.update(), just without the
    * PROPRIETOR/PRINCIPAL administrative-post case (they never author
    * lessons, so there's no equivalent bypass to write here). */
@@ -73,7 +73,7 @@ export class LessonsService {
     });
   }
 
-  /** Mirrors AssignmentsService.assertReadAccess exactly — TEACHER
+  /** Mirrors AssignmentsService.assertReadAccess exactly, TEACHER
    * scoped to their own class arms, STUDENT/PARENT scoped to their own
    * (child's) current class, everyone else (PROPRIETOR/PRINCIPAL/other
    * staff) just needs the arm to belong to their own tenant. */

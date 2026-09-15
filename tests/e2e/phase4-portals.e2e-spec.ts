@@ -20,7 +20,7 @@ import { NotificationService } from '../../src/modules/notifications/notificatio
  * Self-contained: provisions its own tenant, campuses, classes, teachers,
  * students and guardians rather than depending on `npm run seed`.
  */
-describe('Phase 4 — Portals & Communication (e2e)', () => {
+describe('Phase 4: Portals & Communication (e2e)', () => {
   let app: INestApplication;
   const prisma = new PrismaClient();
   const suffix = Date.now();
@@ -79,7 +79,7 @@ describe('Phase 4 — Portals & Communication (e2e)', () => {
       .expect(200);
     const campusId = campusRes.body[0].id;
 
-    // Two classes, two teachers — one each, so cross-class access can be
+    // Two classes, two teachers, one each, so cross-class access can be
     // asserted as denied rather than trivially true (single-class tenants
     // can't prove the scoping actually filters anything).
     const classRes = await request(app.getHttpServer())
@@ -137,7 +137,7 @@ describe('Phase 4 — Portals & Communication (e2e)', () => {
 
     // Student creation now requires a parent/guardian and auto-provisions
     // that guardian's own portal login (same as the student's) when it's a
-    // newly created guardian rather than a reused guardianId — so this one
+    // newly created guardian rather than a reused guardianId, so this one
     // call is enough to get both a real student and a real, log-in-able
     // parent account, no separate POST /users + POST /guardians dance.
     const studentARes = await request(app.getHttpServer())
@@ -260,7 +260,7 @@ describe('Phase 4 — Portals & Communication (e2e)', () => {
     });
   });
 
-  describe('NotificationService — idempotent sends and graceful degradation', () => {
+  describe('NotificationService: idempotent sends and graceful degradation', () => {
     it('does not duplicate a CommunicationLog row when the same event fires twice', async () => {
       const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
       const testApp = await moduleRef.createNestApplication().init();

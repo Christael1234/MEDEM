@@ -9,7 +9,7 @@ import { CreateAnnouncementDto } from './dto/create-announcement.dto';
 
 /**
  * Recipients are always resolved from the tenant-scoped roster at send
- * time (Phase 4 rule #2) — a client can target an audience *type* and a
+ * time (Phase 4 rule #2): a client can target an audience *type* and a
  * reference id, never a literal list of user ids.
  */
 @Injectable()
@@ -61,13 +61,13 @@ export class AnnouncementsService {
     return this.prisma.db.announcement.findMany({ orderBy: { createdAt: 'desc' } });
   }
 
-  /** Per-recipient read status — "did everyone see this?" AnnouncementsService
+  /** Per-recipient read status, "did everyone see this?" AnnouncementsService
    * never stored its own recipient list; it fans out through
    * NotificationService.notify(), which already writes one Notification row
    * per recipient tagged (entityType: 'Announcement', entityId). Reading
    * those back gives the real per-person readAt with no new schema needed.
    * Scoped to the announcement's own sender (or Proprietor/Principal
-   * oversight) — same "manage your own thing" discipline as Lessons/CBT
+   * oversight), same "manage your own thing" discipline as Lessons/CBT
    * exam ownership checks elsewhere, not open to every STAFF_ROLES caller
    * the way listAnnouncements() is. */
   async listRecipients(announcementId: string) {

@@ -4,7 +4,7 @@ import { RequestContextService } from '../context/request-context';
 import { tenantScopingExtension } from './tenant-scoping.extension';
 
 /** Inferred from a concrete call rather than `PrismaClient['$extends']`
- * directly — the latter widens to the generic overload signature and
+ * directly: the latter widens to the generic overload signature and
  * loses every model delegate's type, so every `prisma.db.xyz` call comes
  * back `unknown`. Binding through a real function call keeps the
  * extension's actual return type. */
@@ -15,10 +15,10 @@ function extendClient(client: PrismaClient, requestContext: RequestContextServic
 /**
  * Wraps a single underlying PrismaClient connection with two entry points:
  *
- * - `db`   — tenant-scoped client. Use this everywhere by default; it
+ * - `db`   : tenant-scoped client. Use this everywhere by default; it
  *            auto-injects/validates tenantId from the request context and
  *            throws if that context is missing for a tenant-owned model.
- * - `raw`  — unscoped client. Only for deliberate cross-tenant/platform
+ * - `raw`  : unscoped client. Only for deliberate cross-tenant/platform
  *            code paths: pre-auth login lookup by email, Super Admin tenant
  *            provisioning, and the seed script. Every use of `raw` on a
  *            tenant-owned model is a spot that must be manually reviewed

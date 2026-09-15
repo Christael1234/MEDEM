@@ -1,7 +1,7 @@
 // Bridges this static prototype to the real SchoolOS API. Loaded before
 // app.js: sets up real auth (login/refresh/logout) and exposes window.SchoolOSApi
 // for pages that fetch live data (see loadRealStudents() in app.js).
-// Everything else in app.js remains the original mock UI — fees, finance,
+// Everything else in app.js remains the original mock UI: fees, finance,
 // payroll and HR aren't built on the backend yet (see CLAUDE.md non-goals).
 (function () {
   const API_BASE = 'http://localhost:3000';
@@ -24,17 +24,17 @@
     COMPLIANCE_ADMIN: 'compliance',
   };
 
-  // Login-page role tiles. Purely a UX affordance — prefills the email
+  // Login-page role tiles. Purely a UX affordance: prefills the email
   // field and shows a hint; the account's real role (from the JWT) is
   // always what actually decides access, never the tile that was clicked.
   const LOGIN_ROLE_TILES = {
     student: {
       emailPlaceholder: 'firstname.lastname@greenfield.test',
-      hint: 'Student login — email and password issued when your record was created (password123 by default).',
+      hint: 'Student login: email and password issued when your record was created (password123 by default).',
     },
     teacher: {
       emailPlaceholder: 'firstname.lastname@greenfield.test',
-      hint: 'Teacher login — email and password issued when your account was created (password123 by default).',
+      hint: 'Teacher login: email and password issued when your account was created (password123 by default).',
     },
     staff: {
       emailPlaceholder: 'bursar@greenfield.test',
@@ -42,7 +42,7 @@
     },
     admin: {
       emailPlaceholder: 'proprietor@greenfield.test',
-      hint: 'Proprietor and Principal accounts — full school oversight.',
+      hint: 'Proprietor and Principal accounts: full school oversight.',
     },
   };
 
@@ -88,7 +88,7 @@
     return true;
   }
 
-  /** Authenticated fetch wrapper — attaches the access token, retries once
+  /** Authenticated fetch wrapper: attaches the access token, retries once
    * through a refresh on 401, and throws with the API's error message on
    * any other non-2xx response. */
   async function api(path, options = {}) {
@@ -107,7 +107,7 @@
     }
 
     if (res.status === 401) {
-      showLogin('Your session expired — please sign in again.');
+      showLogin('Your session expired. Please sign in again.');
     }
 
     if (!res.ok) {
@@ -116,7 +116,7 @@
         const body = await res.json();
         if (body.message) message = Array.isArray(body.message) ? body.message.join(', ') : body.message;
       } catch {
-        // ignore — non-JSON error body
+        // ignore, non-JSON error body
       }
       throw new Error(message);
     }
@@ -185,7 +185,7 @@
     showLogin();
   }
 
-  /** Clicking a role tile just steers the login form — prefills the email
+  /** Clicking a role tile just steers the login form: prefills the email
    * placeholder and hint text for that role. It never bypasses auth. */
   function selectLoginRole(roleKey) {
     const tile = LOGIN_ROLE_TILES[roleKey];

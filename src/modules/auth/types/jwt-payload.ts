@@ -1,7 +1,7 @@
 import { Role } from '@prisma/client';
 
 /** Claims signed into the access token. Everything TenantContextInterceptor
- * and the RBAC guards rely on comes from here — never from the client. */
+ * and the RBAC guards rely on comes from here, never from the client. */
 export interface JwtAccessPayload {
   sub: string; // userId
   tenantId: string | null;

@@ -41,7 +41,7 @@ export class AcademicSessionsController {
     return this.service.listTerms(id);
   }
 
-  // The one action that flips which session/term is "current" — see
+  // The one action that flips which session/term is "current"; see
   // AcademicSessionsService.activateTerm. Backs both "advance to next
   // term" and "start new session" (create the term, then activate it) in
   // the topbar's session/term picker.

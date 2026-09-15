@@ -10,7 +10,7 @@ import { hasCampusAccess } from '../campus-access';
 import { REQUIRE_SCOPE_KEY, ScopeOptions } from '../decorators/require-scope.decorator';
 
 /**
- * Opt-in via @RequireScope() — most routes aren't campus-scoped, so this
+ * Opt-in via @RequireScope(): most routes aren't campus-scoped, so this
  * guard passes through unless the route explicitly declares the check.
  * Looks for the campusId in params, then body, then query.
  */

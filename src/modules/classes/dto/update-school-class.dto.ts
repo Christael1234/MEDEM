@@ -16,7 +16,7 @@ export class UpdateSchoolClassDto {
 
   /** The next class in the promotion chain (e.g. JSS 1 -> JSS 2). Omitted
    * means "don't change it"; clearPromotesTo is the explicit way to unset
-   * it (mark this class terminal — students graduate out of it), same
+   * it (mark this class terminal, students graduate out of it), same
    * remove-flag pattern as UpdateClassArmDto.removeClassTeacher. */
   @IsOptional()
   @IsString()

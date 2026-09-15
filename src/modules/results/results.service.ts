@@ -31,7 +31,7 @@ export class ResultsService {
 
     const totalScore = this.computeTotal(dto.continuousAssessmentScore, dto.examScore);
     // Computed once, against whatever grade bands exist right now, and
-    // stored — see GradingScaleService.computeGrade's doc comment for why
+    // stored, see GradingScaleService.computeGrade's doc comment for why
     // this is never recalculated later. null (no band configured, or none
     // covers this score) is an honest "ungraded", not an error.
     const grade = totalScore === undefined ? null : await this.gradingScale.computeGrade(totalScore);
@@ -126,10 +126,10 @@ export class ResultsService {
   }
 
   /** PARENT/STUDENT only ever see PUBLISHED results for their own
-   * children/self — draft, submitted and approved-but-unpublished results
+   * children/self: draft, submitted and approved-but-unpublished results
    * are staff-internal by design. TEACHER is scoped to their own
    * assigned subject/class combinations ("strictly scoped to assigned
-   * classes/subjects" per the access-control spec) — without this, any
+   * classes/subjects" per the access-control spec); without this, any
    * teacher could list every other teacher's marks for every subject. */
   async list(filter: { studentId?: string; subjectId?: string; termId?: string }) {
     const role = this.requestContext.getRole();
@@ -165,13 +165,60 @@ export class ResultsService {
         status: isFamily ? 'PUBLISHED' : undefined,
       },
       orderBy: { createdAt: 'desc' },
-      // Names, not just FK ids — this is what the portal UIs display.
+      // Names, not just FK ids: this is what the portal UIs display.
       include: {
         student: { select: { firstName: true, lastName: true } },
         subject: { select: { name: true } },
         term: { select: { name: true } },
       },
     });
+  }
+
+  /** The Reports page's academic performance report: average/highest/
+   * lowest score, grade distribution and a per-subject breakdown, over
+   * PUBLISHED results only (drafts/unapproved marks aren't a school's
+   * "official" record yet). Real aggregation off real Result rows. */
+  async report(filter: { termId?: string; subjectId?: string; classArmId?: string }) {
+    const results = await this.prisma.db.result.findMany({
+      where: {
+        termId: filter.termId,
+        subjectId: filter.subjectId,
+        status: 'PUBLISHED',
+        student: filter.classArmId ? { currentClassArmId: filter.classArmId } : undefined,
+      },
+      include: { subject: { select: { name: true } } },
+    });
+
+    const scores = results.map((r) => Number(r.totalScore ?? 0));
+    const count = results.length;
+    const average = count ? Math.round((scores.reduce((a, b) => a + b, 0) / count) * 10) / 10 : 0;
+    const highest = count ? Math.max(...scores) : 0;
+    const lowest = count ? Math.min(...scores) : 0;
+
+    const gradeDistribution: Record<string, number> = {};
+    for (const r of results) {
+      const grade = r.grade ?? 'Ungraded';
+      gradeDistribution[grade] = (gradeDistribution[grade] ?? 0) + 1;
+    }
+
+    const bySubjectMap = new Map<string, { name: string; count: number; totalScore: number }>();
+    for (const r of results) {
+      const bucket = bySubjectMap.get(r.subjectId) ?? { name: r.subject.name, count: 0, totalScore: 0 };
+      bucket.count += 1;
+      bucket.totalScore += Number(r.totalScore ?? 0);
+      bySubjectMap.set(r.subjectId, bucket);
+    }
+
+    return {
+      count,
+      average,
+      highest,
+      lowest,
+      gradeDistribution,
+      bySubject: [...bySubjectMap.values()]
+        .map((b) => ({ name: b.name, count: b.count, average: Math.round((b.totalScore / b.count) * 10) / 10 }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    };
   }
 
   /** The (students, subjects) a TEACHER may see results for: students in
@@ -231,7 +278,7 @@ export class ResultsService {
 
   /** Mirrors ClassesService.assertTeacherCanActOnArm but keyed on
    * (student's current class, subject) since Result has no classArmId of
-   * its own — a TEACHER may enter/submit only for a
+   * its own: a TEACHER may enter/submit only for a
    * TeacherSubjectAssignment they actually hold. */
   private async assertTeacherCanEnterResult(studentId: string, subjectId: string): Promise<void> {
     if (this.requestContext.getRole() !== 'TEACHER') return;

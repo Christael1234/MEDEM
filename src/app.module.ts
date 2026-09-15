@@ -15,6 +15,7 @@ import { CampusesModule } from './modules/campuses/campuses.module';
 import { CbtExamsModule } from './modules/cbt-exams/cbt-exams.module';
 import { ClassesModule } from './modules/classes/classes.module';
 import { CommunicationModule } from './modules/communication/communication.module';
+import { DocumentTemplatesModule } from './modules/document-templates/document-templates.module';
 import { GradingScaleModule } from './modules/grading-scale/grading-scale.module';
 import { GuardiansModule } from './modules/guardians/guardians.module';
 import { HealthModule } from './modules/health/health.module';
@@ -35,7 +36,7 @@ import { UsersModule } from './modules/users/users.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     // Serves the static frontend (public/) from the same origin as the API
-    // in deployed environments — same-origin means no CORS is needed
+    // in deployed environments, same-origin means no CORS is needed
     // between them there. Local dev keeps using a separate static server
     // on :5500 (see shared.js's API_BASE); this doesn't affect that.
     ServeStaticModule.forRoot({ rootPath: join(__dirname, '..', '..', 'public') }),
@@ -44,7 +45,7 @@ import { UsersModule } from './modules/users/users.module';
     AuditModule,
     NumberingModule,
     NotificationsModule,
-    // AuthModule registers JwtAuthGuard as APP_GUARD — must run before
+    // AuthModule registers JwtAuthGuard as APP_GUARD: must run before
     // RbacModule's RolesGuard/CampusScopeGuard so req.user is populated.
     AuthModule,
     RbacModule,
@@ -66,6 +67,7 @@ import { UsersModule } from './modules/users/users.module';
     CbtExamsModule,
     CommunicationModule,
     TimetableModule,
+    DocumentTemplatesModule,
     TeacherPortalModule,
     StudentPortalModule,
     ParentPortalModule,

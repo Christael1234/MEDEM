@@ -50,7 +50,7 @@ export class AttendanceService {
     return record;
   }
 
-  /** Take attendance for a whole class arm in one call — the realistic
+  /** Take attendance for a whole class arm in one call, the realistic
    * teacher workflow rather than one record at a time. */
   async recordBulk(dto: BulkAttendanceDto) {
     await this.classes.assertArmBelongsToTenant(dto.classArmId);
@@ -72,7 +72,7 @@ export class AttendanceService {
     });
     if (existing) {
       throw new ConflictException(
-        'Attendance for this class has already been taken today — correct individual records instead of re-taking the register.',
+        'Attendance for this class has already been taken today: correct individual records instead of re-taking the register.',
       );
     }
 
@@ -103,7 +103,7 @@ export class AttendanceService {
 
   /** TEACHER corrections land PENDING and have no effect until a
    * PROPRIETOR/PRINCIPAL reviews them (see approveCorrection/
-   * rejectCorrection) — a PROPRIETOR/PRINCIPAL correcting is the review,
+   * rejectCorrection): a PROPRIETOR/PRINCIPAL correcting is the review,
    * so theirs apply immediately. Either way this never overwrites the
    * original row; list() resolves which row is "current". */
   async correct(originalId: string, status: AttendanceStatus, correctionReason: string) {
@@ -181,7 +181,7 @@ export class AttendanceService {
     return updated;
   }
 
-  /** The school-wide queue a PROPRIETOR/PRINCIPAL reviews — every
+  /** The school-wide queue a PROPRIETOR/PRINCIPAL reviews, every
    * TEACHER-submitted correction still awaiting a decision. */
   async listPendingCorrections() {
     return this.prisma.db.attendanceRecord.findMany({
@@ -193,6 +193,136 @@ export class AttendanceService {
         recordedBy: { select: { firstName: true, lastName: true } },
       },
     });
+  }
+
+  /** Two school-wide numbers for the overview page's KPI strip:
+   * today's attendance rate (present+late over everyone actually marked
+   * today) and the list of students flagged for a run of absences. Both
+   * go through resolveEffective first so a correction that flips a
+   * status is honored, not just the original entry. */
+  async overviewSummary() {
+    const [todayRate, flaggedAbsentees] = await Promise.all([
+      this.computeTodayRate(),
+      this.computeFlaggedAbsentees(),
+    ]);
+    return { todayRate, flaggedAbsentees };
+  }
+
+  private async computeTodayRate() {
+    const today = new Date().toISOString().slice(0, 10);
+    const records = await this.prisma.db.attendanceRecord.findMany({
+      where: { date: new Date(today) },
+    });
+    const effective = this.resolveEffective(records);
+    if (!effective.length) return null;
+    const presentCount = effective.filter((r) => r.status === 'PRESENT' || r.status === 'LATE').length;
+    const markedCount = effective.length;
+    return {
+      presentCount,
+      markedCount,
+      ratePercent: Math.round((presentCount / markedCount) * 1000) / 10,
+    };
+  }
+
+  /** Flags any student with `threshold`+ effective ABSENT days within
+   * the last `windowDays` calendar days: a lightweight, transparent rule
+   * (no ML/heuristics) a Principal can act on immediately. EXCUSED and
+   * LATE don't count against a student here, only unexplained ABSENT. */
+  private async computeFlaggedAbsentees(windowDays = 14, threshold = 3) {
+    const since = new Date();
+    since.setDate(since.getDate() - windowDays);
+
+    const records = await this.prisma.db.attendanceRecord.findMany({
+      where: { date: { gte: since } },
+    });
+    const effective = this.resolveEffective(records);
+
+    const absentCountByStudent = new Map<string, number>();
+    for (const r of effective) {
+      if (r.status !== 'ABSENT') continue;
+      absentCountByStudent.set(r.studentId, (absentCountByStudent.get(r.studentId) ?? 0) + 1);
+    }
+
+    const flaggedIds = [...absentCountByStudent.entries()].filter(([, count]) => count >= threshold);
+    if (!flaggedIds.length) return [];
+
+    const students = await this.prisma.db.student.findMany({
+      where: { id: { in: flaggedIds.map(([studentId]) => studentId) } },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        currentClassArm: { select: { name: true, schoolClass: { select: { name: true } } } },
+      },
+    });
+    const studentById = new Map(students.map((s) => [s.id, s]));
+
+    return flaggedIds
+      .map(([studentId, absentCount]) => {
+        const student = studentById.get(studentId);
+        if (!student) return null;
+        return {
+          studentId,
+          name: `${student.firstName} ${student.lastName}`,
+          classLabel: student.currentClassArm
+            ? `${student.currentClassArm.schoolClass.name} · ${student.currentClassArm.name}`
+            : '—',
+          absentCount,
+          windowDays,
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== null)
+      .sort((a, b) => b.absentCount - a.absentCount);
+  }
+
+  /** The Reports page's attendance report: a date-range aggregate,
+   * school-wide or narrowed to one class arm, honoring corrections the
+   * same way overviewSummary does (resolveEffective first). Real numbers
+   * off real AttendanceRecord rows, not a canned report catalog entry. */
+  async report(filter: { from: string; to: string; classArmId?: string }) {
+    const records = await this.prisma.db.attendanceRecord.findMany({
+      where: {
+        date: { gte: new Date(filter.from), lte: new Date(filter.to) },
+        classArmId: filter.classArmId,
+      },
+    });
+    const effective = this.resolveEffective(records);
+
+    const byStatus = { PRESENT: 0, ABSENT: 0, LATE: 0, EXCUSED: 0 };
+    const byClassArmId = new Map<string, { present: number; absent: number; late: number; excused: number; total: number }>();
+    for (const r of effective) {
+      byStatus[r.status] += 1;
+      const bucket = byClassArmId.get(r.classArmId) ?? { present: 0, absent: 0, late: 0, excused: 0, total: 0 };
+      bucket.total += 1;
+      if (r.status === 'PRESENT') bucket.present += 1;
+      else if (r.status === 'ABSENT') bucket.absent += 1;
+      else if (r.status === 'LATE') bucket.late += 1;
+      else if (r.status === 'EXCUSED') bucket.excused += 1;
+      byClassArmId.set(r.classArmId, bucket);
+    }
+
+    const classes = await this.prisma.db.schoolClass.findMany({ include: { arms: true } });
+    const armLabelById = new Map<string, string>();
+    for (const c of classes) for (const a of c.arms) armLabelById.set(a.id, `${c.name} · ${a.name}`);
+
+    const totalRecords = effective.length;
+    const attended = byStatus.PRESENT + byStatus.LATE;
+
+    return {
+      from: filter.from,
+      to: filter.to,
+      totalRecords,
+      byStatus,
+      ratePercent: totalRecords ? Math.round((attended / totalRecords) * 1000) / 10 : 0,
+      byClass: [...byClassArmId.entries()]
+        .map(([classArmId, bucket]) => ({
+          classArmId,
+          label: armLabelById.get(classArmId) ?? classArmId,
+          ...bucket,
+          ratePercent: bucket.total ? Math.round(((bucket.present + bucket.late) / bucket.total) * 1000) / 10 : 0,
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    };
   }
 
   async list(filter: { classArmId?: string; studentId?: string; termId?: string; date?: string }) {
@@ -218,8 +348,8 @@ export class AttendanceService {
     return this.resolveEffective(records);
   }
 
-  /** Collapses a (studentId, date) group of rows — the original plus any
-   * correction attempts — down to the single row that's actually "true"
+  /** Collapses a (studentId, date) group of rows (the original plus any
+   * correction attempts) down to the single row that's actually "true"
    * right now: the most recently APPROVED correction if one exists,
    * otherwise the original. PENDING/REJECTED corrections never change
    * what's current; a PENDING one is only surfaced as a flag so viewers
@@ -253,7 +383,7 @@ export class AttendanceService {
     });
     if (existing) {
       throw new ConflictException(
-        'Attendance for this student has already been taken today — correct the existing record instead.',
+        'Attendance for this student has already been taken today: correct the existing record instead.',
       );
     }
   }

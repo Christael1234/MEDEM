@@ -1,7 +1,7 @@
 {
   "name": "schoolos-api",
   "version": "0.1.0",
-  "description": "SchoolOS backend — NestJS + Prisma + PostgreSQL (Phase 0 + Phase 1)",
+  "description": "SchoolOS backend: NestJS + Prisma + PostgreSQL (Phase 0 + Phase 1)",
   "private": true,
   "license": "UNLICENSED",
   "scripts": {

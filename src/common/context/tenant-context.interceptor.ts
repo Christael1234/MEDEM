@@ -9,11 +9,11 @@ import { RequestContextService, RequestContextStore } from './request-context';
 
 /**
  * Populates RequestContextService for the lifetime of the request, sourced
- * only from req.user (set by JwtStrategy after verifying the access token —
+ * only from req.user (set by JwtStrategy after verifying the access token,
  * see CLAUDE.md rule #2: tenant/campus IDs never come from the client).
  *
  * Runs after guards (so req.user is already set on authenticated routes)
- * and wraps `next.handle()` itself — not just its subscription — because
+ * and wraps `next.handle()` itself (not just its subscription) because
  * Nest invokes the handler as soon as `next.handle()` is called, and
  * AsyncLocalStorage only propagates to async work started inside `.run()`.
  */
@@ -28,7 +28,7 @@ export class TenantContextInterceptor implements NestInterceptor {
       | undefined;
 
     if (!user) {
-      // Unauthenticated route (e.g. login) — no tenant context to set.
+      // Unauthenticated route (e.g. login): no tenant context to set.
       // Handlers on these routes must use PrismaService.raw explicitly.
       return next.handle();
     }

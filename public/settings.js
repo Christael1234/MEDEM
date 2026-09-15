@@ -1,4 +1,4 @@
-// Settings module — proprietor gets the real branding/templates/bulk-import
+// Settings module: proprietor gets the real branding/templates/bulk-import
 // workspace; every other role sees the generic mock page, same as the
 // original app. Schools/Campuses (proprietor-only) lands here via #schools.
 (function () {
@@ -25,31 +25,16 @@
   }
 
   // ---- Proprietor settings (branding / templates / bulk import) ----
-  const brandingSettings = { schoolName: 'Greenfield International Schools', primaryColor: '#1d6f5c', secondaryColor: '#f2b134', logoLabel: 'greenfield-logo.png', loginHeadline: 'Welcome back to Greenfield', loginSubtext: 'Sign in to your school portal to continue.', campus: 'All campuses' };
-  const documentTemplates = [
-    { name: 'Report card', status: 'Published', version: 'v3', updated: '12 Aug' },
-    { name: 'Fee bill / invoice', status: 'Published', version: 'v2', updated: '3 Aug' },
-    { name: 'Payment receipt', status: 'Draft', version: 'v1', updated: 'Today' },
-    { name: 'Admission letter', status: 'Published', version: 'v1', updated: '20 Jul' },
-  ];
-  const templateMergeFields = {
-    'Report card': ['{{student.name}}', '{{student.class}}', '{{student.position}}', '{{subject.scores}}', '{{term.name}}', '{{school.name}}', '{{school.logo}}'],
-    'Fee bill / invoice': ['{{student.name}}', '{{invoice.number}}', '{{invoice.items}}', '{{invoice.total}}', '{{invoice.dueDate}}', '{{school.name}}', '{{school.bankDetails}}'],
-    'Payment receipt': ['{{receipt.number}}', '{{student.name}}', '{{payment.amount}}', '{{payment.method}}', '{{payment.date}}', '{{school.name}}'],
-    'Admission letter': ['{{applicant.name}}', '{{applicant.class}}', '{{school.name}}', '{{school.principalName}}', '{{term.startDate}}'],
-  };
-  const bulkImportHistory = [{ type: 'Students', rows: 812, status: 'Completed', date: '3 days ago' }, { type: 'Staff', rows: 64, status: 'Completed', date: '3 days ago' }];
-  function brandPreviewHtml() {
-    const b = brandingSettings;
-    return `<div class="brand-preview"><div class="brand-preview-chrome"><span></span><span></span><span></span></div><div class="brand-preview-body" style="background:${b.primaryColor}"><div class="brand-preview-card"><p class="brand-preview-logo">${b.schoolName}</p><h3>${b.loginHeadline}</h3><p>${b.loginSubtext}</p><div class="brand-preview-btn" style="background:${b.secondaryColor}">Sign in</div></div></div></div>`;
+  let documentTemplates = [];
+  function brandingPreviewHtml(b) {
+    const logo = b.logoUrl ? `<img src="${b.logoUrl}" alt="Logo" style="width:34px;height:34px;border-radius:9px;object-fit:cover">` : `<div style="width:34px;height:34px;border-radius:9px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.35);font:16px var(--serif)">S</div>`;
+    return `<div class="brand-preview"><div class="brand-preview-chrome"><span></span><span></span><span></span></div><div class="brand-preview-body" style="background:${b.sidebarColor || '#123a31'}"><div class="brand-preview-card">${logo}<h3 style="margin-top:10px">${window.SchoolOS.escapeHtml(b.loginHeadline || '')}</h3><p>${window.SchoolOS.escapeHtml(b.loginSubtext || '')}</p><div class="brand-preview-btn" style="background:${b.primaryColor || '#176a50'}">Sign in</div></div></div></div>`;
   }
   function pageSettingsProprietor(label) {
-    const templateRows = documentTemplates.map((t) => `<tr><td><strong>${t.name}</strong></td><td><span class="status ${t.status !== 'Published' ? 'pending' : ''}">${t.status}</span></td><td>${t.version}</td><td>${t.updated}</td><td class="row-action"><div class="row-actions"><button class="outline-button" data-preview-template="${t.name}">Preview</button><button class="outline-button" data-edit-template="${t.name}">Edit</button>${t.status === 'Draft' ? `<button class="new-button" data-publish-template="${t.name}">Publish</button>` : ''}</div></td></tr>`).join('');
-    const importRows = bulkImportHistory.map((h) => `<tr><td>${h.type}</td><td>${h.rows}</td><td><span class="status">${h.status}</span></td><td>${h.date}</td></tr>`).join('');
-    return `<section class="page workspace-page visible" id="settings"><div class="page-heading"><div><p class="eyebrow">Settings</p><h1>${label}</h1><p class="subtitle">Appearance, branding, document templates and mid-term data migration for your school.</p></div></div><div class="screen-tabs" data-tabs><button class="active" data-tab="appearance">Appearance</button><button data-tab="branding">Branding</button><button data-tab="templates">Document templates</button><button data-tab="bulk-import">Bulk import</button></div><div data-tab-panel="appearance" class="tab-panel visible"><div class="workspace-grid-main"><section class="data-card" style="padding:18px"><p class="modal-sub">Applies instantly across the app for everyone in your school, once saved.</p><form id="appearanceForm" onsubmit="__appearanceSubmit(event)"><div class="form-row"><div class="form-field"><label>Primary colour (buttons, links, highlights)</label><input name="primaryColor" type="color" id="appearancePrimaryInput" value="#176a50"></div><div class="form-field"><label>Sidebar colour</label><input name="sidebarColor" type="color" id="appearanceSidebarInput" value="#123a31"></div></div><div class="form-actions"><button type="button" class="outline-button" id="appearanceResetBtn">Reset to default</button><button type="submit" class="new-button">Save colours</button></div></form></section><aside class="workspace-aside"><section class="side-card"><p class="eyebrow">Live preview</p><div id="appearancePreviewBox"></div><small>Updates as you pick — saved once you click Save colours.</small></section></aside></div></div><div data-tab-panel="branding" class="tab-panel"><div class="workspace-grid-main"><section class="data-card" style="padding:18px"><form id="brandingForm" onsubmit="__brandingSubmit(event)"><div class="form-row"><div class="form-field"><label>School display name</label><input name="schoolName" value="${brandingSettings.schoolName}"></div><div class="form-field"><label>Applies to</label><select name="campus">${['All campuses', 'Ikoyi', 'Lekki', 'Yaba'].map((c) => `<option ${c === brandingSettings.campus ? 'selected' : ''}>${c}</option>`).join('')}</select></div></div><div class="modal-upload">📎 Upload logo — current: ${brandingSettings.logoLabel}</div><div class="form-field"><label>Login page headline</label><input name="loginHeadline" value="${brandingSettings.loginHeadline}"></div><div class="form-field"><label>Login page subtext</label><textarea name="loginSubtext">${brandingSettings.loginSubtext}</textarea></div><div class="form-actions"><button type="submit" class="new-button">Save branding</button></div></form></section><aside class="workspace-aside"><section class="side-card"><p class="eyebrow">Live preview</p><h3 id="brandPreviewName">${brandingSettings.schoolName}</h3><div id="brandPreviewBox">${brandPreviewHtml()}</div><small>This is what families see on your school’s login page. Never resolves for other tenants.</small></section></aside></div></div><div data-tab-panel="templates" class="tab-panel"><section class="data-card"><table class="data-table"><thead><tr><th>Template</th><th>Status</th><th>Version</th><th>Last updated</th><th></th></tr></thead><tbody>${templateRows}</tbody></table></section></div><div data-tab-panel="bulk-import" class="tab-panel"><section class="data-card" style="padding:18px"><p class="modal-sub">Import existing student, staff and result records so a school can switch mid-term without losing history.</p><div class="workspace-grid"><article class="side-card"><p class="eyebrow">Students</p><h3>Student records</h3><p>Name, class, guardian, admission number</p><div class="row-actions"><button class="outline-button" data-toast="Template downloaded">Download template</button><button class="new-button" data-bulk-import="Students">Upload &amp; import</button></div></article><article class="side-card"><p class="eyebrow">Staff</p><h3>Staff records</h3><p>Name, role, subjects, employment date</p><div class="row-actions"><button class="outline-button" data-toast="Template downloaded">Download template</button><button class="new-button" data-bulk-import="Staff">Upload &amp; import</button></div></article><article class="side-card"><p class="eyebrow">Results</p><h3>Result records</h3><p>Student, subject, term, scores</p><div class="row-actions"><button class="outline-button" data-toast="Template downloaded">Download template</button><button class="new-button" data-bulk-import="Results">Upload &amp; import</button></div></article></div></section><section class="data-card" style="margin-top:14px"><div class="data-toolbar"><strong>Import history</strong></div><table class="data-table"><thead><tr><th>Type</th><th>Rows</th><th>Status</th><th>Date</th></tr></thead><tbody>${importRows}</tbody></table></section></div></section>`;
+    return `<section class="page workspace-page visible" id="settings"><div class="page-heading"><div><p class="eyebrow">Settings</p><h1>${label}</h1><p class="subtitle">Appearance, branding, document templates and mid-term data migration for your school.</p></div></div><div class="screen-tabs" data-tabs><button class="active" data-tab="appearance">Appearance</button><button data-tab="branding">Branding</button><button data-tab="templates">Document templates</button><button data-tab="bulk-import">Bulk import</button></div><div data-tab-panel="appearance" class="tab-panel visible"><div class="workspace-grid-main"><section class="data-card" style="padding:18px"><p class="modal-sub">Applies instantly across the app for everyone in your school, once saved.</p><form id="appearanceForm" onsubmit="__appearanceSubmit(event)"><div class="form-row"><div class="form-field"><label>Primary colour (buttons, links, highlights)</label><input name="primaryColor" type="color" id="appearancePrimaryInput" value="#176a50"></div><div class="form-field"><label>Sidebar colour</label><input name="sidebarColor" type="color" id="appearanceSidebarInput" value="#123a31"></div></div><div class="form-actions"><button type="button" class="outline-button" id="appearanceResetBtn">Reset to default</button><button type="submit" class="new-button">Save colours</button></div></form></section><aside class="workspace-aside"><section class="side-card"><p class="eyebrow">Live preview</p><div id="appearancePreviewBox"></div><small>Updates as you pick, saved once you click Save colours.</small></section></aside></div></div><div data-tab-panel="branding" class="tab-panel"><div class="workspace-grid-main"><section class="data-card" style="padding:18px"><p class="modal-sub">Shown on both the Student/Parent and Staff/Admin sign-in pages, for anyone who's ever signed in from this browser before (see the note below).</p><form id="brandingForm" onsubmit="__brandingSubmit(event)"><div class="form-field"><label>School display name</label><input name="name" id="brandingNameInput" maxlength="100" placeholder="e.g. Greenfield International Schools"><small style="display:block;margin-top:5px;color:var(--muted)">Shown in the sidebar and on both sign-in pages.</small></div><div class="form-field"><label>Logo image URL</label><input name="logoUrl" id="brandingLogoInput" type="url" placeholder="https://…/logo.png"><small style="display:block;margin-top:5px;color:var(--muted)">Paste a link to a hosted image (e.g. from your website). File upload isn't built yet.</small></div><div class="form-field"><label>Login page headline</label><input name="loginHeadline" id="brandingHeadlineInput" maxlength="80" placeholder="Welcome to your school portal."></div><div class="form-field"><label>Login page subtext</label><textarea name="loginSubtext" id="brandingSubtextInput" maxlength="200" placeholder="Sign in to continue."></textarea></div><div class="form-actions"><button type="button" class="outline-button" id="brandingRemoveLogoBtn">Remove logo</button><button type="submit" class="new-button">Save branding</button></div></form></section><aside class="workspace-aside"><section class="side-card"><p class="eyebrow">Live preview</p><div id="brandingPreviewBox"></div><small>This is what families see on your school's login page. Never resolves for other tenants. New visitors who've never signed in on a given browser still see the default copy until they do — there's no way to know which school someone is until they identify themselves.</small></section></aside></div></div><div data-tab-panel="templates" class="tab-panel"><section class="data-card"><table class="data-table"><thead><tr><th>Template</th><th>Status</th><th>Version</th><th>Last updated</th><th></th></tr></thead><tbody id="templatesTableBody"><tr><td colspan="5">Loading…</td></tr></tbody></table></section></div><div data-tab-panel="bulk-import" class="tab-panel"><section class="data-card" style="padding:18px"><p class="modal-sub">Import existing student records (CSV) so a school can switch mid-term without losing history. Staff and result import aren't built on the backend yet.</p><div class="workspace-grid"><article class="side-card"><p class="eyebrow">Students</p><h3>Student records</h3><p>Name, campus, class/arm, guardian</p><div class="row-actions"><button class="outline-button" id="downloadStudentsTemplateBtn">Download CSV template</button><label class="new-button" style="cursor:pointer;display:inline-flex;align-items:center">Upload &amp; import<input type="file" accept=".csv" id="studentsImportFile" style="display:none"></label></div></article><article class="side-card"><p class="eyebrow">Staff</p><h3>Staff records</h3><p>Not built on the backend yet</p><div class="row-actions"><button class="outline-button" disabled title="Not built yet">Download CSV template</button><button class="new-button" disabled title="Not built yet">Upload &amp; import</button></div></article><article class="side-card"><p class="eyebrow">Results</p><h3>Result records</h3><p>Not built on the backend yet</p><div class="row-actions"><button class="outline-button" disabled title="Not built yet">Download CSV template</button><button class="new-button" disabled title="Not built yet">Upload &amp; import</button></div></article></div></section><section class="data-card" id="bulkImportResultCard" style="margin-top:14px;display:none"></section><section class="data-card" style="margin-top:14px"><div class="data-toolbar"><strong>Import history</strong></div><table class="data-table"><thead><tr><th>Date</th><th>Rows</th><th>Created</th><th>Failed</th></tr></thead><tbody id="bulkImportHistoryBody"><tr><td colspan="4">Loading…</td></tr></tbody></table></section></div></section>`;
   }
 
-  // ---- Appearance (real — persisted per tenant, applies instantly) ----
+  // ---- Appearance (real, persisted per tenant, applies instantly) ----
   function appearancePreviewHtml(primaryColor, sidebarColor) {
     return `<div class="brand-preview"><div class="brand-preview-chrome"><span></span><span></span><span></span></div><div class="brand-preview-body" style="background:${sidebarColor};padding:16px"><div class="brand-preview-card"><p class="brand-preview-logo">Sidebar</p><div class="brand-preview-btn" style="background:${primaryColor}">Button / link colour</div></div></div></div>`;
   }
@@ -85,46 +70,168 @@
       window.SchoolOS.toast('Colour scheme saved');
     } catch (err) { window.SchoolOS.toast(`Could not save colours (${err.message})`); }
   };
-  function saveBranding(form) {
-    const fd = new FormData(form);
-    brandingSettings.schoolName = fd.get('schoolName') || brandingSettings.schoolName;
-    brandingSettings.campus = fd.get('campus');
-    brandingSettings.loginHeadline = fd.get('loginHeadline') || brandingSettings.loginHeadline;
-    brandingSettings.loginSubtext = fd.get('loginSubtext') || brandingSettings.loginSubtext;
-    const box = document.getElementById('brandPreviewBox'); if (box) box.innerHTML = brandPreviewHtml();
-    const nameEl = document.getElementById('brandPreviewName'); if (nameEl) nameEl.textContent = brandingSettings.schoolName;
-    window.SchoolOS.toast(`Branding saved · applies to ${brandingSettings.campus}`);
-  }
-  window.__brandingSubmit = (e) => { e.preventDefault(); saveBranding(e.target); };
-  function openTemplatePreviewModal(name) {
-    const fields = (templateMergeFields[name] || []).map((f) => `<span class="permission-chip">${f}</span>`).join('');
-    window.SchoolOS.openModal(`<p class="eyebrow">Template preview</p><h2>${name}</h2><p class="modal-sub">Merge fields used by this template — replaced with real data when a document is generated. Tenant-scoped: this template and its assets never resolve for another school.</p><div class="submission-list">${fields}</div><div class="form-actions"><button class="outline-button" data-modal-close>Close</button></div>`);
-  }
-  function openTemplateEditModal(name) {
-    const t = documentTemplates.find((x) => x.name === name); if (!t) return;
-    window.SchoolOS.formModal({
-      eyebrow: 'Edit template', title: name, sub: 'Editing creates a new draft version — publish it to make it live for every new document.',
-      fields: [{ name: 'notes', label: 'Change notes', type: 'textarea', placeholder: 'What did you change in this version?' }],
-      submitLabel: 'Save as draft',
-      onSubmit: () => { const n = Number(t.version.replace('v', '')) + 1; t.version = `v${n}`; t.status = 'Draft'; t.updated = 'Today'; render(); window.SchoolOS.toast(`Draft saved · ${name} (v${n})`); },
+  let lastLoadedBranding = {};
+  async function loadBrandingSettings() {
+    const nameInput = document.getElementById('brandingNameInput');
+    const logoInput = document.getElementById('brandingLogoInput');
+    const headlineInput = document.getElementById('brandingHeadlineInput');
+    const subtextInput = document.getElementById('brandingSubtextInput');
+    const previewBox = document.getElementById('brandingPreviewBox');
+    if (!nameInput || !logoInput || !headlineInput || !subtextInput) return;
+    try {
+      lastLoadedBranding = await window.SchoolOS.api('/tenants/me/branding');
+      nameInput.value = lastLoadedBranding.name || '';
+      logoInput.value = lastLoadedBranding.logoUrl || '';
+      headlineInput.value = lastLoadedBranding.loginHeadline || '';
+      subtextInput.value = lastLoadedBranding.loginSubtext || '';
+    } catch (err) { window.SchoolOS.toast(`Could not load branding (${err.message})`); }
+    const renderPreview = () => { if (previewBox) previewBox.innerHTML = brandingPreviewHtml({ ...lastLoadedBranding, name: nameInput.value, logoUrl: logoInput.value, loginHeadline: headlineInput.value, loginSubtext: subtextInput.value }); };
+    renderPreview();
+    [nameInput, logoInput, headlineInput, subtextInput].forEach((input) => input.addEventListener('input', renderPreview));
+    const removeLogoBtn = document.getElementById('brandingRemoveLogoBtn');
+    if (removeLogoBtn) removeLogoBtn.addEventListener('click', async () => {
+      try {
+        lastLoadedBranding = await window.SchoolOS.api('/tenants/me/branding', { method: 'PUT', body: JSON.stringify({ clearLogo: true }) });
+        logoInput.value = ''; renderPreview();
+        window.SchoolOS.refreshBrandColors();
+        window.SchoolOS.toast('Logo removed');
+      } catch (err) { window.SchoolOS.toast(`Could not remove logo (${err.message})`); }
     });
   }
-  function publishTemplate(name) {
-    const t = documentTemplates.find((x) => x.name === name); if (!t) return;
-    t.status = 'Published'; t.updated = 'Today';
-    render(); window.SchoolOS.toast(`Published · ${name} is now used for every new document`);
+  window.__brandingSubmit = async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const name = (fd.get('name') || '').trim();
+    const logoUrl = (fd.get('logoUrl') || '').trim();
+    const loginHeadline = (fd.get('loginHeadline') || '').trim();
+    const loginSubtext = (fd.get('loginSubtext') || '').trim();
+    if (!name) { window.SchoolOS.toast('School display name cannot be blank'); return; }
+    try {
+      await window.SchoolOS.api('/tenants/me/branding', {
+        method: 'PUT',
+        body: JSON.stringify({ name, logoUrl: logoUrl || undefined, loginHeadline: loginHeadline || undefined, loginSubtext: loginSubtext || undefined }),
+      });
+      window.SchoolOS.refreshBrandColors();
+      window.SchoolOS.toast('Branding saved · applies to your sidebar and sign-in pages');
+    } catch (err) { window.SchoolOS.toast(`Could not save branding (${err.message})`); }
+  };
+  // ---- Document templates (real, persisted per tenant) ----
+  async function loadDocumentTemplates() {
+    const tbody = document.getElementById('templatesTableBody');
+    if (!tbody) return;
+    try {
+      documentTemplates = await window.SchoolOS.api('/document-templates');
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="5">Could not load templates (${err.message})</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = documentTemplates.length ? documentTemplates.map((t) => `<tr><td><strong>${t.name}</strong></td><td><span class="status ${t.status !== 'PUBLISHED' ? 'pending' : ''}">${t.status}</span></td><td>v${t.version}</td><td>${new Date(t.updatedAt).toLocaleDateString()}</td><td class="row-action"><div class="row-actions"><button class="outline-button" data-preview-template="${t.id}">Preview</button><button class="outline-button" data-edit-template="${t.id}">Edit</button>${t.status === 'DRAFT' ? `<button class="new-button" data-publish-template="${t.id}">Publish</button>` : ''}</div></td></tr>`).join('') : '<tr><td colspan="5">No templates yet.</td></tr>';
   }
-  function openBulkImportModal(kind) {
+  async function openTemplatePreviewModal(id) {
+    window.SchoolOS.openModal('<p class="eyebrow">Template preview</p><h2>Loading…</h2>');
+    let t;
+    try { t = await window.SchoolOS.api(`/document-templates/${id}/preview`); } catch (err) {
+      window.SchoolOS.closeModal(); window.SchoolOS.toast(`Could not load preview (${err.message})`); return;
+    }
+    const fields = (t.mergeFields || []).map((f) => `<span class="permission-chip">${f}</span>`).join('');
+    window.SchoolOS.openModal(`<p class="eyebrow">Template preview · v${t.version} · ${t.status}</p><h2>${t.name}</h2><p class="modal-sub">Rendered against real data from your school (a real student/term/session where one exists). Tenant-scoped: this template never resolves for another school.</p><pre class="template-preview-box">${window.SchoolOS.escapeHtml(t.rendered)}</pre><p class="modal-sub" style="margin:14px 0 6px">Merge fields this template supports</p><div class="submission-list">${fields}</div><div class="form-actions"><button class="outline-button" data-modal-close>Close</button></div>`);
+  }
+  function openTemplateEditModal(id) {
+    const t = documentTemplates.find((x) => x.id === id); if (!t) return;
     window.SchoolOS.formModal({
-      eyebrow: 'Bulk import', title: `Import ${kind.toLowerCase()} records`, sub: 'CSV only. Rows are matched to existing records where possible; the rest are queued for review.',
-      fields: [{ name: 'notes', label: 'Import notes', type: 'textarea', placeholder: 'e.g. Mid-term transfer from previous system' }],
-      submitLabel: 'Upload & import',
-      onSubmit: () => {
-        const rows = kind === 'Students' ? 128 : kind === 'Staff' ? 14 : 960;
-        bulkImportHistory.unshift({ type: kind, rows, status: 'Completed', date: 'Today' });
-        render(); window.SchoolOS.toast(`Import complete · ${rows} ${kind.toLowerCase()} rows processed`);
+      eyebrow: 'Edit template', title: t.name, sub: `Saves as v${t.version + 1} and drops to Draft. Publish it to make it live for every new document — what's currently Published keeps rendering as-is until then.`,
+      fields: [{ name: 'content', label: 'Template content', type: 'textarea', value: t.content, placeholder: 'Use {{merge.fields}} — see Preview for the full list this template supports' }],
+      submitLabel: 'Save as draft',
+      onSubmit: async (d) => {
+        try {
+          await window.SchoolOS.api(`/document-templates/${id}`, { method: 'PATCH', body: JSON.stringify({ content: d.content }) });
+          window.SchoolOS.toast(`Draft saved · ${t.name} (v${t.version + 1})`);
+          loadDocumentTemplates();
+        } catch (err) { window.SchoolOS.toast(`Could not save (${err.message})`); }
       },
     });
+  }
+  async function publishTemplate(id) {
+    const t = documentTemplates.find((x) => x.id === id); if (!t) return;
+    try {
+      await window.SchoolOS.api(`/document-templates/${id}/publish`, { method: 'POST' });
+      window.SchoolOS.toast(`Published · ${t.name} is now used for every new document`);
+      loadDocumentTemplates();
+    } catch (err) { window.SchoolOS.toast(`Could not publish (${err.message})`); }
+  }
+
+  // ---- Bulk import: students (real, backed by POST /students/bulk-import) ----
+  const STUDENTS_IMPORT_HEADERS = ['firstName', 'lastName', 'middleName', 'dateOfBirth', 'gender', 'campusName', 'className', 'armName', 'guardianFirstName', 'guardianLastName', 'guardianEmail', 'guardianPhone', 'guardianRelationship'];
+  function downloadStudentsTemplate() {
+    const sampleRow = ['Ada', 'Okafor', '', '2014-03-12', 'Female', 'Ikoyi Campus', 'JSS 1', 'JSS 1 Gold', 'Chidi', 'Okafor', 'chidi.okafor@example.com', '08012345678', 'FATHER'];
+    const csv = [STUDENTS_IMPORT_HEADERS.join(','), sampleRow.map((v) => `"${v}"`).join(',')].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'students-import-template.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+  /** Minimal CSV parser: handles quoted fields (with escaped "" inside
+   * quotes) and commas inside quotes, which covers what a real school
+   * spreadsheet export needs without pulling in a library for one form. */
+  function parseCsv(text) {
+    const rows = [];
+    let row = [], field = '', inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (inQuotes) {
+        if (c === '"' && text[i + 1] === '"') { field += '"'; i++; }
+        else if (c === '"') { inQuotes = false; }
+        else field += c;
+      } else if (c === '"') { inQuotes = true; }
+      else if (c === ',') { row.push(field); field = ''; }
+      else if (c === '\n' || c === '\r') {
+        if (c === '\r' && text[i + 1] === '\n') i++;
+        row.push(field); field = '';
+        if (row.some((v) => v !== '')) rows.push(row);
+        row = [];
+      } else field += c;
+    }
+    if (field !== '' || row.length) { row.push(field); rows.push(row); }
+    if (!rows.length) return [];
+    const headers = rows[0].map((h) => h.trim());
+    return rows.slice(1).map((r) => Object.fromEntries(headers.map((h, i) => [h, (r[i] || '').trim()])));
+  }
+  async function handleStudentsImportFile(file) {
+    const text = await file.text();
+    const parsed = parseCsv(text);
+    if (!parsed.length) { window.SchoolOS.toast('That CSV has no data rows'); return; }
+    const rows = parsed.map((r) => ({
+      firstName: r.firstName, lastName: r.lastName, middleName: r.middleName || undefined,
+      dateOfBirth: r.dateOfBirth || undefined, gender: r.gender || undefined,
+      campusName: r.campusName, className: r.className || undefined, armName: r.armName || undefined,
+      guardianFirstName: r.guardianFirstName, guardianLastName: r.guardianLastName,
+      guardianEmail: r.guardianEmail || undefined, guardianPhone: r.guardianPhone || undefined,
+      guardianRelationship: r.guardianRelationship || undefined,
+    }));
+    const resultCard = document.getElementById('bulkImportResultCard');
+    if (resultCard) { resultCard.style.display = 'block'; resultCard.innerHTML = `<div class="data-toolbar"><strong>Importing ${rows.length} row${rows.length === 1 ? '' : 's'}…</strong></div>`; }
+    try {
+      const res = await window.SchoolOS.api('/students/bulk-import', { method: 'POST', body: JSON.stringify({ rows }) });
+      if (resultCard) {
+        const failedRows = res.results.filter((r) => !r.success);
+        resultCard.innerHTML = `<div class="data-toolbar"><strong>Import complete · ${res.successCount}/${res.totalRows} students created</strong></div>${failedRows.length ? `<table class="data-table"><thead><tr><th>Row</th><th>Error</th></tr></thead><tbody>${failedRows.map((r) => `<tr><td>#${r.row}</td><td>${window.SchoolOS.escapeHtml(r.error)}</td></tr>`).join('')}</tbody></table>` : '<p class="modal-sub" style="padding:0 18px 14px">Every row imported cleanly.</p>'}`;
+      }
+      window.SchoolOS.toast(`Import complete · ${res.successCount}/${res.totalRows} students created`);
+      loadBulkImportHistory();
+    } catch (err) {
+      if (resultCard) resultCard.innerHTML = `<div class="data-toolbar"><strong>Import failed</strong></div><p class="modal-sub" style="padding:0 18px 14px">${err.message}</p>`;
+      window.SchoolOS.toast(`Import failed (${err.message})`);
+    }
+  }
+  async function loadBulkImportHistory() {
+    const tbody = document.getElementById('bulkImportHistoryBody');
+    if (!tbody) return;
+    try {
+      const history = await window.SchoolOS.api('/students/bulk-import-history');
+      tbody.innerHTML = history.length ? history.map((h) => `<tr><td>${new Date(h.date).toLocaleString()}</td><td>${h.totalRows}</td><td>${h.successCount}</td><td>${h.failureCount}</td></tr>`).join('') : '<tr><td colspan="4">No imports yet.</td></tr>';
+    } catch (err) { tbody.innerHTML = `<tr><td colspan="4">Could not load import history (${err.message})</td></tr>`; }
   }
 
   function bindTabs() {
@@ -147,14 +254,25 @@
     }
     container.innerHTML = currentRole === 'proprietor' ? pageSettingsProprietor('Settings') : window.SchoolOS.renderGenericPage('Settings');
     bindTabs();
-    if (currentRole === 'proprietor') loadAppearanceSettings();
+    if (currentRole === 'proprietor') {
+      loadAppearanceSettings();
+      loadBrandingSettings();
+      loadDocumentTemplates();
+      loadBulkImportHistory();
+      const downloadBtn = document.getElementById('downloadStudentsTemplateBtn');
+      if (downloadBtn) downloadBtn.addEventListener('click', downloadStudentsTemplate);
+      const fileInput = document.getElementById('studentsImportFile');
+      if (fileInput) fileInput.addEventListener('change', () => {
+        if (fileInput.files[0]) handleStudentsImportFile(fileInput.files[0]);
+        fileInput.value = '';
+      });
+    }
   }
 
   document.addEventListener('click', (e) => {
     const pt = e.target.closest('[data-preview-template]'); if (pt) openTemplatePreviewModal(pt.dataset.previewTemplate);
     const et = e.target.closest('[data-edit-template]'); if (et) openTemplateEditModal(et.dataset.editTemplate);
     const pbt = e.target.closest('[data-publish-template]'); if (pbt) publishTemplate(pbt.dataset.publishTemplate);
-    const bi = e.target.closest('[data-bulk-import]'); if (bi) openBulkImportModal(bi.dataset.bulkImport);
   });
 
   window.SchoolOS.ready.then((role) => {

@@ -11,7 +11,7 @@ export class UpdateClassArmDto {
   @IsString()
   classTeacherId?: string;
 
-  /** Explicit clear — classTeacherId being merely absent means "don't
+  /** Explicit clear: classTeacherId being merely absent means "don't
    * change it", so unassigning needs its own flag rather than overloading
    * undefined/null. */
   @IsOptional()

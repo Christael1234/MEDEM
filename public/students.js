@@ -1,6 +1,6 @@
 // Students & Admissions module. Students is real (SchoolOS API); Admissions
 // is the original interactive demo kanban (no backend admissions pipeline
-// exists yet) — both were separate top-level nav items in the old SPA,
+// exists yet); both were separate top-level nav items in the old SPA,
 // now tabs on one page. #admissions in the URL opens straight to the
 // Admissions tab (used by the sidebar's "Admissions" link).
 (function () {
@@ -18,6 +18,7 @@
   const LEVEL_LABELS = { NURSERY: 'Nursery', PRIMARY: 'Primary', JUNIOR_SECONDARY: 'Junior Secondary', SENIOR_SECONDARY: 'Senior Secondary' };
   const STREAM_LABELS = { SCIENCE: 'Science', ART: 'Art' };
   let lastLoadedStudents = [];
+  let lastLoadedClasses = [];
   let lastArmInfoById = {};
   async function loadRealStudents() {
     const tbody = document.getElementById('realStudentsBody');
@@ -26,23 +27,57 @@
     try {
       const [students, classes] = await Promise.all([window.SchoolOS.api('/students'), window.SchoolOS.api('/classes').catch(() => [])]);
       lastLoadedStudents = students;
+      lastLoadedClasses = classes;
       lastArmInfoById = {};
-      classes.forEach((c) => (c.arms || []).forEach((a) => { lastArmInfoById[a.id] = { className: c.name, armName: a.name, level: c.level }; }));
+      classes.forEach((c) => (c.arms || []).forEach((a) => { lastArmInfoById[a.id] = { classId: c.id, className: c.name, armName: a.name, level: c.level }; }));
+      populateStudentsClassArmFilters();
       renderStudentsTable();
     } catch (err) {
       tbody.innerHTML = `<tr><td colspan="5">Could not load students (${err.message})</td></tr>`;
     }
   }
+  /** Level -> Class -> Arm cascading filter: each select's options
+   * narrow to what the level(s) above it actually allow, current
+   * selections are preserved across a reload where still valid (e.g.
+   * after adding a student), and picking a level/class resets whatever
+   * is below it since the old choice may no longer apply. */
+  function populateStudentsClassArmFilters() {
+    const levelSelect = document.getElementById('studentsLevelFilter');
+    const classSelect = document.getElementById('studentsClassFilter');
+    const armSelect = document.getElementById('studentsArmFilter');
+    if (!levelSelect || !classSelect || !armSelect) return;
+    const level = levelSelect.value;
+    const previousClass = classSelect.value;
+    const classesForLevel = lastLoadedClasses.filter((c) => !level || c.level === level);
+    classSelect.innerHTML = '<option value="">All classes</option>' + classesForLevel.map((c) => `<option value="${c.id}">${c.name}</option>`).join('');
+    classSelect.value = classesForLevel.some((c) => c.id === previousClass) ? previousClass : '';
+    classSelect.disabled = !classesForLevel.length;
+
+    const classId = classSelect.value;
+    const selectedClass = lastLoadedClasses.find((c) => c.id === classId);
+    const previousArm = armSelect.value;
+    const armsForClass = selectedClass ? selectedClass.arms || [] : [];
+    armSelect.innerHTML = '<option value="">All arms</option>' + armsForClass.map((a) => `<option value="${a.id}">${a.name}</option>`).join('');
+    armSelect.value = armsForClass.some((a) => a.id === previousArm) ? previousArm : '';
+    armSelect.disabled = !armsForClass.length;
+  }
   function renderStudentsTable() {
     const tbody = document.getElementById('realStudentsBody');
     if (!tbody) return;
-    const filterSelect = document.getElementById('studentsLevelFilter');
-    const level = filterSelect ? filterSelect.value : '';
-    const students = level ? lastLoadedStudents.filter((s) => (lastArmInfoById[s.currentClassArmId] || {}).level === level) : lastLoadedStudents;
+    const level = document.getElementById('studentsLevelFilter')?.value || '';
+    const classId = document.getElementById('studentsClassFilter')?.value || '';
+    const armId = document.getElementById('studentsArmFilter')?.value || '';
+    const students = lastLoadedStudents.filter((s) => {
+      const arm = lastArmInfoById[s.currentClassArmId];
+      if (armId) return s.currentClassArmId === armId;
+      if (classId) return arm?.classId === classId;
+      if (level) return arm?.level === level;
+      return true;
+    });
     tbody.innerHTML = students.length ? students.map((s) => {
       const arm = lastArmInfoById[s.currentClassArmId];
       return `<tr><td><div class="person-cell"><span class="mini-avatar">${window.SchoolOS.initialsOf(s.firstName + ' ' + s.lastName)}</span>${s.firstName} ${s.lastName}</div></td><td>${s.admissionNo}</td><td>${arm ? `${arm.className} · ${arm.armName}` : '—'}</td><td><span class="status">${s.status}</span></td><td class="row-action"><button class="outline-button" data-view-student="${s.id}">View</button></td></tr>`;
-    }).join('') : `<tr><td colspan="5">No students${level ? ' at this level' : ''} yet.</td></tr>`;
+    }).join('') : `<tr><td colspan="5">No students match this filter yet.</td></tr>`;
   }
 
   const GUARDIAN_RELATIONSHIPS = [['MOTHER', 'Mother'], ['FATHER', 'Father'], ['GRANDPARENT', 'Grandparent'], ['SIBLING', 'Sibling'], ['LEGAL_GUARDIAN', 'Legal guardian'], ['OTHER', 'Other']];
@@ -93,7 +128,7 @@
           const matches = await window.SchoolOS.api('/guardians?search=' + encodeURIComponent(q));
           results.innerHTML = matches.length
             ? matches.map((g) => `<div class="guardian-search-result-row" data-pick-guardian="${g.id}" data-pick-guardian-name="${g.firstName} ${g.lastName}">${g.firstName} ${g.lastName}${g.phone ? ' · ' + g.phone : ''}</div>`).join('')
-            : '<div class="guardian-search-result-row guardian-search-empty">No match — add a new parent below</div>';
+            : '<div class="guardian-search-result-row guardian-search-empty">No match, add a new parent below</div>';
         } catch (err) { results.innerHTML = ''; }
       }, 250);
     });
@@ -132,13 +167,13 @@
     return { firstName, lastName, phone: phone || undefined, email: email || undefined, relationship };
   }
 
-  /** No Campus field and no arm/section picker — a class already belongs
+  /** No Campus field and no arm/section picker: a class already belongs
    * to one campus (SchoolClass.campusId), so picking a class fixes the
    * campus implicitly, and the arm within it is assigned at random from
    * whichever arms that class has (real schools don't let a parent or
    * admin cherry-pick a section). Senior Secondary students pick a
    * Science/Art stream instead, which is what determines which class
-   * they actually belong in — that stream is saved right after creation
+   * they actually belong in; that stream is saved right after creation
    * via the same PATCH /students/:id/stream endpoint the admin/self-serve
    * stream editors already use. */
   async function openNewStudentModal() {
@@ -153,7 +188,7 @@
     const classesByLevel = {};
     classes.forEach((c) => { (classesByLevel[c.level] ||= []).push(c); });
     const levelsWithClasses = Object.keys(LEVEL_LABELS).filter((lvl) => (classesByLevel[lvl] || []).length);
-    if (!levelsWithClasses.length) { window.SchoolOS.toast('No classes found — add a class first (Academics → Classes)'); return; }
+    if (!levelsWithClasses.length) { window.SchoolOS.toast('No classes found, add a class first (Academics → Classes)'); return; }
 
     const classOptionsHtml = (level) => (classesByLevel[level] || []).map((c) => `<option value="${c.id}">${c.name}${multiCampus ? ' · ' + (campusNameById[c.campusId] || '') : ''}</option>`).join('');
 
@@ -203,19 +238,19 @@
 
       const cls = classById[schoolClassId];
       // For Senior Secondary, the chosen stream is what actually picks the
-      // class — only arms an admin has tagged for that stream are
+      // class; only arms an admin has tagged for that stream are
       // eligible, never a stream-agnostic arm from this class.
       const eligibleArms = level === 'SENIOR_SECONDARY' ? (cls.arms || []).filter((a) => a.stream === stream) : (cls.arms || []);
       if (!eligibleArms.length) {
         window.SchoolOS.toast(level === 'SENIOR_SECONDARY'
-          ? `No ${STREAM_LABELS[stream]} arms configured for ${cls.name} yet — tag one first (Academics → Classes → ${cls.name})`
-          : `${cls.name} has no arms/sections yet — add one first (Academics → Classes)`);
+          ? `No ${STREAM_LABELS[stream]} arms configured for ${cls.name} yet, tag one first (Academics → Classes → ${cls.name})`
+          : `${cls.name} has no arms/sections yet, add one first (Academics → Classes)`);
         return;
       }
       const randomArm = eligibleArms[Math.floor(Math.random() * eligibleArms.length)];
 
       const guardian1 = readGuardianBlock(1);
-      if (!guardian1) { window.SchoolOS.toast('A parent/guardian is required — search for an existing one or enter a name'); return; }
+      if (!guardian1) { window.SchoolOS.toast('A parent/guardian is required, search for an existing one or enter a name'); return; }
       const guardian2 = document.querySelector('[data-guardian-block="2"]') ? readGuardianBlock(2) : null;
 
       const payload = {
@@ -242,7 +277,7 @@
           const guardianRows = (created.guardianLoginCredentials || []).flatMap((g) => [[`${g.name} (parent)`, g.email], ['— password', g.password]]);
           window.SchoolOS.detailModal({
             eyebrow: 'Students', title: 'Login(s) created',
-            sub: `Portal logins were generated automatically for ${firstName} ${lastName}${guardianRows.length ? ' and any newly added parent(s)' : ''}. Share these directly — they won't be shown again. (A reused existing parent keeps their existing login.)`,
+            sub: `Portal logins were generated automatically for ${firstName} ${lastName}${guardianRows.length ? ' and any newly added parent(s)' : ''}. Share these directly; they won't be shown again. (A reused existing parent keeps their existing login.)`,
             rows: [['Student', created.loginCredentials.email], ['— password', created.loginCredentials.password], ...guardianRows],
           });
         }
@@ -279,7 +314,7 @@
       } catch (err) { window.SchoolOS.toast(`Could not update student (${err.message})`); }
     };
 
-    /** Real promotion/transfer, not a raw field edit — POST /students/:id/promote
+    /** Real promotion/transfer, not a raw field edit: POST /students/:id/promote
      * also records StudentClassHistory (CLAUDE.md treats this as an
      * audited trail, not a silent overwrite). */
     window.__moveStudentClassSubmit = async (e) => {
@@ -336,14 +371,18 @@
     const row = document.getElementById('studentsAddRow');
     if (!row) return;
     const canManage = role === 'proprietor' || role === 'principal';
-    const filterHtml = `<span class="tt-class-label">Filter by level</span><select id="studentsLevelFilter" class="level-filter-select" aria-label="Filter students by level"><option value="">All levels</option>${Object.entries(LEVEL_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>`;
+    const filterHtml = `<select id="studentsLevelFilter" class="level-filter-select" aria-label="Filter students by level"><option value="">All levels</option>${Object.entries(LEVEL_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select><select id="studentsClassFilter" class="level-filter-select" aria-label="Filter students by class"><option value="">All classes</option></select><select id="studentsArmFilter" class="level-filter-select" aria-label="Filter students by arm"><option value="">All arms</option></select>`;
     const streamReqBtn = canManage ? '<button class="outline-button" id="streamRequestsBtn">Stream requests<span id="streamRequestsBadge"></span></button>' : '';
     const addBtn = canManage ? '<button class="new-button" id="addStudentBtn">+ Add student</button>' : '';
     row.innerHTML = filterHtml + streamReqBtn + addBtn;
     const btn = document.getElementById('addStudentBtn');
     if (btn) btn.addEventListener('click', openNewStudentModal);
-    const filterSelect = document.getElementById('studentsLevelFilter');
-    if (filterSelect) filterSelect.addEventListener('change', renderStudentsTable);
+    const levelSelect = document.getElementById('studentsLevelFilter');
+    if (levelSelect) levelSelect.addEventListener('change', () => { populateStudentsClassArmFilters(); renderStudentsTable(); });
+    const classSelect = document.getElementById('studentsClassFilter');
+    if (classSelect) classSelect.addEventListener('change', () => { populateStudentsClassArmFilters(); renderStudentsTable(); });
+    const armSelect = document.getElementById('studentsArmFilter');
+    if (armSelect) armSelect.addEventListener('change', renderStudentsTable);
     const streamReqEl = document.getElementById('streamRequestsBtn');
     if (streamReqEl) {
       streamReqEl.addEventListener('click', openStreamRequestsModal);
@@ -355,14 +394,14 @@
   }
 
   /** Admin review queue for self-service stream-switch requests (SS1
-   * students only — see StudentsService.requestStreamChange). Approving
+   * students only; see StudentsService.requestStreamChange). Approving
    * moves the student's stream (and, if the class has an arm tagged for
    * it, the student into that arm) server-side; nothing here mutates
    * the student directly. */
   async function openStreamRequestsModal() {
     let requests = [];
     try { requests = await window.SchoolOS.api('/students/stream-requests?status=PENDING'); } catch (err) { window.SchoolOS.toast(`Could not load stream requests (${err.message})`); return; }
-    const rowsHtml = requests.length ? requests.map((r) => `<div class="modal-detail-row"><span>${r.student.firstName} ${r.student.lastName} (${r.student.admissionNo})</span><span>Wants ${STREAM_LABELS[r.requestedStream]}${r.reason ? ' — ' + r.reason : ''}</span><span class="row-action"><button class="outline-button" data-approve-stream-request="${r.id}">Approve</button> <button class="outline-button" data-reject-stream-request="${r.id}">Reject</button></span></div>`).join('') : '<p class="modal-sub" style="margin:0">No pending stream requests.</p>';
+    const rowsHtml = requests.length ? requests.map((r) => `<div class="modal-detail-row"><span>${r.student.firstName} ${r.student.lastName} (${r.student.admissionNo})</span><span>Wants ${STREAM_LABELS[r.requestedStream]}${r.reason ? '; ' + r.reason : ''}</span><span class="row-action"><button class="outline-button" data-approve-stream-request="${r.id}">Approve</button> <button class="outline-button" data-reject-stream-request="${r.id}">Reject</button></span></div>`).join('') : '<p class="modal-sub" style="margin:0">No pending stream requests.</p>';
     window.SchoolOS.openModal(`<p class="eyebrow">Students</p><h2>Stream change requests</h2><p class="modal-sub">Only SS1 students can submit these. Approving moves the student into a matching arm if one is tagged for the new stream.</p>${rowsHtml}<div class="form-actions"><button class="outline-button" data-modal-close>Close</button></div>`);
   }
   async function reviewStreamRequest(id, approve) {

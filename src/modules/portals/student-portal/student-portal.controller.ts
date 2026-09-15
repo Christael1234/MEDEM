@@ -13,7 +13,7 @@ import { TimetableService } from '../../timetable/timetable.service';
 /**
  * Read-side aggregation over the student's own records. Every underlying
  * service call already enforces STUDENT scoping (own-record only,
- * published-only results) — this controller just resolves "my student
+ * published-only results); this controller just resolves "my student
  * id" once and reuses those services, per the doc's "don't duplicate
  * their queries" guidance.
  */
@@ -34,7 +34,7 @@ export class StudentPortalController {
   @Get('results')
   async myResults() {
     const studentId = await this.myStudentId();
-    // ResultsService.list forces status=PUBLISHED for the STUDENT role —
+    // ResultsService.list forces status=PUBLISHED for the STUDENT role:
     // draft/submitted/approved-but-unpublished results never surface here.
     return this.results.list({ studentId });
   }
@@ -74,7 +74,7 @@ export class StudentPortalController {
         },
       },
     });
-    // Drives whether the portal offers "Request stream change" at all —
+    // Drives whether the portal offers "Request stream change" at all:
     // only a student's first Senior Secondary class (see
     // ClassesService.isEntrySeniorSecondaryClass) is eligible.
     const canRequestStreamChange = student.currentClassArm
@@ -83,7 +83,7 @@ export class StudentPortalController {
     return { ...student, canRequestStreamChange };
   }
 
-  // Self-service — but only a request, and only for SS1 (see
+  // Self-service, but only a request, and only for SS1 (see
   // StudentsService.requestStreamChange for why): every other Senior
   // Secondary student's stream can only change via an admin using
   // PATCH /students/:id/stream directly.
@@ -112,7 +112,7 @@ export class StudentPortalController {
     });
     if (!me.currentClassArmId) return [];
 
-    // TeacherSubjectAssignment is keyed by SchoolClass, not ClassArm —
+    // TeacherSubjectAssignment is keyed by SchoolClass, not ClassArm:
     // resolve the parent class first (same pattern as
     // ClassesService.assertTeacherCanActOnArm).
     const schoolClass = await this.prisma.db.schoolClass.findFirstOrThrow({
@@ -129,7 +129,7 @@ export class StudentPortalController {
     });
 
     // A Senior Secondary student who's picked a stream only sees subjects
-    // that apply to it — a subject with no streams tagged is "any stream"
+    // that apply to it. A subject with no streams tagged is "any stream"
     // (same convention as an empty `levels`), so it still shows either way.
     if (!me.stream) return assignments;
     return assignments.filter((a) => !a.subject.streams.length || a.subject.streams.includes(me.stream!));

@@ -1,4 +1,4 @@
-// Messages / Communication — real, via POST /communication/announcements
+// Messages / Communication, real, via POST /communication/announcements
 // (audience-targeted: INDIVIDUAL/ARM/PARENT_GROUP/CAMPUS/SCHOOL) and
 // GET /notifications/me for the read-only inbox. "Parents" (principal's
 // view-only staff nav item) lands here too via #parents and falls back to
@@ -7,7 +7,7 @@
 //
 // Compose access mirrors AnnouncementsService.assertCanTargetAudience
 // server-side: PROPRIETOR/PRINCIPAL can target anyone, TEACHER only their
-// own class arms, PARENT/STUDENT can't send at all — for them this page is
+// own class arms, PARENT/STUDENT can't send at all; for them this page is
 // a real inbox (everything the school has sent them), not a fake compose form.
 (function () {
   let currentRole = 'proprietor';
@@ -70,12 +70,12 @@
   }
 
   async function openComposeModal() {
-    if (!canCompose()) { window.SchoolOS.toast('Only staff can send messages — you’ll see anything the school sends you here.'); return; }
+    if (!canCompose()) { window.SchoolOS.toast('Only staff can send messages. You’ll see anything the school sends you here.'); return; }
     if (!recipientDirectory.length) await loadRecipientDirectory();
     if (!recipientDirectory.length) { window.SchoolOS.toast('No recipients available to message yet'); return; }
     const byLabel = Object.fromEntries(recipientDirectory.map((r) => [r.label, r]));
     window.SchoolOS.formModal({
-      eyebrow: 'Messages', title: 'New message', sub: 'Sends a real announcement via the SchoolOS API — POST /communication/announcements.',
+      eyebrow: 'Messages', title: 'New message', sub: 'Sends a real announcement via the SchoolOS API: POST /communication/announcements.',
       fields: [
         { name: 'to', label: 'Send to', type: 'select', options: Object.keys(byLabel) },
         { name: 'title', label: 'Subject', placeholder: 'e.g. Third-term update' },
@@ -100,7 +100,7 @@
   }
 
   function pageMessagesCompose(label) {
-    return `<section class="page workspace-page visible" id="${window.SchoolOS.slug(label)}"><div class="page-heading"><div><p class="eyebrow">Communication</p><h1>${label}</h1><p class="subtitle">${currentRole === 'teacher' ? 'Message your class — students and their parents.' : 'Message anyone in your school, a whole class, or a broadcast group.'}</p></div><button class="new-button" id="composeBtn">+ Compose message</button></div><section class="data-card"><table class="data-table"><thead><tr><th>Message</th><th>Sent to</th><th>When</th><th></th></tr></thead><tbody id="realMessagesBody"><tr><td colspan="4">Loading…</td></tr></tbody></table></section></section>`;
+    return `<section class="page workspace-page visible" id="${window.SchoolOS.slug(label)}"><div class="page-heading"><div><p class="eyebrow">Communication</p><h1>${label}</h1><p class="subtitle">${currentRole === 'teacher' ? 'Message your class, students and their parents.' : 'Message anyone in your school, a whole class, or a broadcast group.'}</p></div><button class="new-button" id="composeBtn">+ Compose message</button></div><section class="data-card"><table class="data-table"><thead><tr><th>Message</th><th>Sent to</th><th>When</th><th></th></tr></thead><tbody id="realMessagesBody"><tr><td colspan="4">Loading…</td></tr></tbody></table></section></section>`;
   }
   async function loadRealSentMessages() {
     const tbody = document.getElementById('realMessagesBody');
@@ -118,7 +118,7 @@
     } catch (err) { tbody.innerHTML = `<tr><td colspan="4">Could not load messages (${err.message})</td></tr>`; }
   }
 
-  /** Per-recipient read status — backed by GET
+  /** Per-recipient read status, backed by GET
    * /communication/announcements/:id/recipients, which reads back the
    * Notification rows notify() already wrote per recipient (readAt and
    * all) rather than anything invented for this view. */
@@ -130,12 +130,12 @@
     try {
       const data = await window.SchoolOS.api('/communication/announcements/' + announcementId + '/recipients');
       const rows = data.recipients.map((r) => `<tr><td>${r.firstName} ${r.lastName}</td><td>${roleLabel(r.role)}</td><td>${r.readAt ? `<span class="status">Read · ${new Date(r.readAt).toLocaleString()}</span>` : '<span class="status pending">Unread</span>'}</td></tr>`).join('');
-      body.innerHTML = `<p class="modal-sub">${data.readCount} of ${data.totalRecipients} have read this${data.totalRecipients ? '' : ' — no one was eligible to receive it'}.</p>${data.totalRecipients ? `<table class="data-table"><thead><tr><th>Recipient</th><th>Role</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>` : ''}`;
+      body.innerHTML = `<p class="modal-sub">${data.readCount} of ${data.totalRecipients} have read this${data.totalRecipients ? '' : '; no one was eligible to receive it'}.</p>${data.totalRecipients ? `<table class="data-table"><thead><tr><th>Recipient</th><th>Role</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>` : ''}`;
     } catch (err) { body.innerHTML = `<p class="modal-sub">Could not load (${err.message})</p>`; }
   }
 
   function pageMessagesInbox(label) {
-    return `<section class="page workspace-page visible" id="${window.SchoolOS.slug(label)}"><div class="page-heading"><div><p class="eyebrow">Communication</p><h1>${label}</h1><p class="subtitle">Everything the school has sent you — announcements, results, assignments and more.</p></div></div><section class="data-card"><table class="data-table"><thead><tr><th>Message</th><th>When</th><th></th></tr></thead><tbody id="realMessagesInboxBody"><tr><td colspan="3">Loading…</td></tr></tbody></table></section></section>`;
+    return `<section class="page workspace-page visible" id="${window.SchoolOS.slug(label)}"><div class="page-heading"><div><p class="eyebrow">Communication</p><h1>${label}</h1><p class="subtitle">Everything the school has sent you: announcements, results, assignments and more.</p></div></div><section class="data-card"><table class="data-table"><thead><tr><th>Message</th><th>When</th><th></th></tr></thead><tbody id="realMessagesInboxBody"><tr><td colspan="3">Loading…</td></tr></tbody></table></section></section>`;
   }
   async function loadRealInbox() {
     const tbody = document.getElementById('realMessagesInboxBody');

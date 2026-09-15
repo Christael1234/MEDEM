@@ -23,7 +23,7 @@ export class TenantsController {
 
   // 'me/branding' is a 2-segment path ('tenants/me/branding'), so it never
   // collides with the 1-segment ':id' route below regardless of
-  // declaration order — every authenticated user in the tenant can read
+  // declaration order. Every authenticated user in the tenant can read
   // their own school's colors (needed to paint the UI), but only
   // PROPRIETOR can change them.
   @AllowAnyAuthenticatedRole()

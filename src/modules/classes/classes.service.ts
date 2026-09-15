@@ -17,7 +17,7 @@ export class ClassesService {
   ) {}
 
   async createClass(dto: CreateSchoolClassDto) {
-    // Campus is tenant-scoped — resolving it first confirms campusId
+    // Campus is tenant-scoped: resolving it first confirms campusId
     // belongs to the caller's own tenant before SchoolClass references it.
     await this.prisma.db.campus.findUniqueOrThrow({ where: { id: dto.campusId } });
 
@@ -111,10 +111,10 @@ export class ClassesService {
   /** ClassArm and StaffProfile aren't auto-tenant-scoped (see the
    * extension's doc comment), so both are resolved through their
    * tenant-scoped parent (assertArmBelongsToTenant, and StaffProfile
-   * itself which IS scoped) before the write — same pattern as
+   * itself which IS scoped) before the write, same pattern as
    * createArm/assertTeacherCanActOnArm. Covers both reassigning
    * (classTeacherId) and unassigning (removeClassTeacher) an existing
-   * class teacher — StaffProfilesService.createTeacher covers the
+   * class teacher: StaffProfilesService.createTeacher covers the
    * assign-at-creation path; this is the only other place it can change. */
   async updateArm(id: string, dto: UpdateClassArmDto) {
     await this.assertArmBelongsToTenant(id);
@@ -134,7 +134,7 @@ export class ClassesService {
       }
     }
 
-    // A teacher leads exactly one arm at a time — reassigning them here
+    // A teacher leads exactly one arm at a time: reassigning them here
     // clears classTeacherId on whatever other arm(s) they were class
     // teacher of, rather than leaving them attached to both.
     if (dto.classTeacherId) {
@@ -164,7 +164,7 @@ export class ClassesService {
   }
 
   /** ClassArm has no tenantId column of its own. Querying its parent
-   * SchoolClass — which IS tenant-scoped — with a relation filter on
+   * SchoolClass (which IS tenant-scoped) with a relation filter on
    * `arms` confirms the arm belongs to the caller's tenant without ever
    * trusting a client-supplied tenantId. */
   async assertArmBelongsToTenant(classArmId: string): Promise<void> {
@@ -173,7 +173,7 @@ export class ClassesService {
     });
   }
 
-  /** "SS1" isn't a magic label anywhere in the schema — it's whichever
+  /** "SS1" isn't a magic label anywhere in the schema: it's whichever
    * SENIOR_SECONDARY class has no other SENIOR_SECONDARY class promoting
    * into it (promotesToClassId), using the same promotion chain the
    * bulk-promotion feature already relies on rather than a second,
@@ -223,7 +223,7 @@ export class ClassesService {
     }
   }
 
-  /** Attendance is restricted to the class teacher only — unlike results/
+  /** Attendance is restricted to the class teacher only: unlike results/
    * lessons/assignments/CBT (assertTeacherCanActOnArm), a subject teacher
    * without the class-teacher role for this arm may not take or correct
    * attendance for it. */
@@ -249,7 +249,7 @@ export class ClassesService {
     }
   }
 
-  /** Every ClassArm id the current TEACHER may act on — as class teacher
+  /** Every ClassArm id the current TEACHER may act on: as class teacher
    * (ClassArm.classTeacherId) or via any TeacherSubjectAssignment. Used to
    * scope list-style queries (StudentsService.list, teacher portal) the
    * same way assertTeacherCanActOnArm scopes single-arm writes. Returns
@@ -285,7 +285,7 @@ export class ClassesService {
     return [...new Set([...ledArms.map((a) => a.id), ...assignedArms.map((a) => a.id)])];
   }
 
-  /** Same set as listArmIdsForCurrentTeacher, with names attached — for
+  /** Same set as listArmIdsForCurrentTeacher, with names attached: for
    * UI pickers (e.g. "which class am I posting this assignment to")
    * where a raw id isn't useful to show. */
   async listDetailedArmsForCurrentTeacher(): Promise<
@@ -301,7 +301,7 @@ export class ClassesService {
     return arms.map((a) => ({ id: a.id, schoolClassName: a.schoolClass.name, armName: a.name }));
   }
 
-  /** Narrower than listDetailedArmsForCurrentTeacher — class-teacher arms
+  /** Narrower than listDetailedArmsForCurrentTeacher: class-teacher arms
    * only, no subject-assignment arms. Backs the attendance-taking picker,
    * which mirrors assertTeacherIsClassTeacherOfArm's restriction. */
   async listClassTeacherArmsForCurrentTeacher(): Promise<

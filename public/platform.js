@@ -1,4 +1,4 @@
-// Platform module — Super Admin's entire nav. None of these ever had
+// Platform module, Super Admin's entire nav. None of these ever had
 // dedicated logic in the original app (platform-level tenant management
 // is out of scope for this build pass per CLAUDE.md); every item is the
 // generic mock page, routed by #hash.

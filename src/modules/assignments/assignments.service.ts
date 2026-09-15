@@ -22,7 +22,7 @@ export class AssignmentsService {
 
     // TEACHER always has a StaffProfile (assertTeacherCanActOnArm above
     // already required one to get this far). PROPRIETOR/PRINCIPAL posting
-    // administratively usually don't have one — that's fine, the field is
+    // administratively usually don't have one, that's fine, the field is
     // optional for exactly this case.
     const userId = this.requestContext.getUserId();
     const staffProfile = await this.prisma.db.staffProfile.findUnique({ where: { userId } });
@@ -66,7 +66,7 @@ export class AssignmentsService {
       });
     });
 
-    const body = dueDate ? `${title} — due ${dueDate}.` : `${title} was posted for your class.`;
+    const body = dueDate ? `${title}, due ${dueDate}.` : `${title} was posted for your class.`;
     for (const recipientUserId of recipientUserIds) {
       await this.notifications.notify({
         recipientUserId,

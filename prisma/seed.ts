@@ -2,7 +2,7 @@ import { PrismaClient, Role } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 /**
- * Runs with a plain, unscoped PrismaClient (not PrismaService) — there is
+ * Runs with a plain, unscoped PrismaClient (not PrismaService); there is
  * no request/tenant context outside a running server, and seeding is
  * trusted admin tooling by nature (same reasoning as PrismaService.raw).
  */
@@ -158,7 +158,7 @@ async function main() {
     terms.push(term);
   }
 
-  // A baseline Subject — class/teacher structure itself is no longer
+  // A baseline Subject: class/teacher structure itself is no longer
   // seeded (see note below), but Subject is a standalone reference table
   // classes get mapped to once they exist.
   await prisma.subject.upsert({
@@ -167,7 +167,7 @@ async function main() {
     create: { tenantId: tenant.id, name: 'Mathematics', code: 'MTH' },
   });
 
-  // Guardian shell for the Parent portal — no student links yet (that's
+  // Guardian shell for the Parent portal, no student links yet (that's
   // wired up once the Parent module is being finished, same as Student).
   await prisma.guardian.upsert({
     where: { userId: parentUser.id },
@@ -182,7 +182,7 @@ async function main() {
     },
   });
 
-  // No hardcoded dummy students, classes or teachers — real ones are
+  // No hardcoded dummy students, classes or teachers: real ones are
   // created through the Students/Classes/Teachers modules (POST /students,
   // POST /classes + /class-arms, POST /staff-profiles/teachers), which
   // auto-generate a linked login (see common/auth/login-credentials.ts).

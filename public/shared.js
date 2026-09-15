@@ -4,7 +4,7 @@
 // state (persisted in localStorage so it survives a full page reload),
 // and the modal system every page's own script builds on.
 //
-// Detection: a page with #loginForm is the sign-in page (index.html) —
+// Detection: a page with #loginForm is the sign-in page (index.html);
 // only the auth/login wiring runs. Every other page has #shell-root and
 // gets the full shell mount + auth guard.
 (function () {
@@ -12,7 +12,7 @@
   // served from a plain static server, e.g. :5500, hitting the Nest app on
   // :3000). Deployed: the Nest app serves this file itself (see
   // ServeStaticModule in app.module.ts), same origin as the API, so a
-  // relative base just works — and needs no CORS between them.
+  // relative base just works, and needs no CORS between them.
   const isLocalDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
   const API_BASE = isLocalDev ? 'http://localhost:3000' : '';
   const TOKEN_KEY = 'schoolos_access_token';
@@ -24,27 +24,49 @@
   const TERM_LABEL_KEY = 'schoolos_term_label';
   const BRAND_COLORS_KEY = 'schoolos_brand_colors';
 
-  // Paint any previously-fetched brand colors immediately, before the
-  // shell (or even the rest of this script) finishes loading — avoids a
-  // flash of the default green on every page navigation, since this is a
-  // multi-page app that remounts the shell from scratch each time.
-  // mountShell() below still fetches the live values and re-applies (and
-  // re-caches) them, this is just the instant-paint step.
+  // Paint any previously-fetched branding immediately, before the shell
+  // (or even the rest of this script) finishes loading: avoids a flash of
+  // default green/copy on every page navigation, since this is a
+  // multi-page app that remounts the shell from scratch each time — and
+  // on the login pages, it's the only way a returning browser sees the
+  // school's own colors/logo/copy before signing in (see applyBranding's
+  // doc comment). mountShell() below still fetches the live values and
+  // re-applies (and re-caches) them, this is just the instant-paint step.
   try {
     const cached = JSON.parse(localStorage.getItem(BRAND_COLORS_KEY) || 'null');
-    if (cached) applyBrandColors(cached);
-  } catch (err) { /* corrupt cache, ignore — mountShell's live fetch still applies real colors */ }
+    if (cached) applyBranding(cached);
+  } catch (err) { /* corrupt cache, ignore; mountShell's live fetch still applies real values */ }
 
-  function applyBrandColors(colors) {
-    if (colors.primaryColor) document.documentElement.style.setProperty('--brand-primary', colors.primaryColor);
-    if (colors.sidebarColor) document.documentElement.style.setProperty('--brand-sidebar', colors.sidebarColor);
+  /** Applies both the CSS-variable colors (every page) and, where the
+   * markup for it exists (the login pages only), the tenant's logo and
+   * login copy. A brand-new visitor's browser has no cache and no tenant
+   * context yet (this is a shared, multi-tenant login URL, not a
+   * per-school subdomain) so they see the generic defaults until they
+   * sign in once; after that, this tenant's branding is cached and
+   * paints instantly on every future visit to either login page. */
+  function applyBranding(b) {
+    if (b.primaryColor) document.documentElement.style.setProperty('--brand-primary', b.primaryColor);
+    if (b.sidebarColor) document.documentElement.style.setProperty('--brand-sidebar', b.sidebarColor);
+    const headlineEl = document.getElementById('loginHeadline');
+    if (headlineEl && b.loginHeadline) headlineEl.textContent = b.loginHeadline;
+    const subtextEl = document.getElementById('loginSubtext');
+    if (subtextEl && b.loginSubtext) subtextEl.textContent = b.loginSubtext;
+    const markEl = document.getElementById('loginVisualMark');
+    if (markEl && b.logoUrl) markEl.innerHTML = `<img src="${b.logoUrl}" alt="School logo">`;
+    const nameEl = document.getElementById('schoolSwitcherName');
+    if (nameEl && b.name) nameEl.textContent = b.name;
+    const avatarEl = document.getElementById('schoolSwitcherAvatar');
+    if (avatarEl && b.name) avatarEl.textContent = initialsOf(b.name);
   }
 
   async function refreshBrandColors() {
     let branding;
     try { branding = await api('/tenants/me/branding'); } catch (err) { return; }
-    applyBrandColors(branding);
-    localStorage.setItem(BRAND_COLORS_KEY, JSON.stringify({ primaryColor: branding.primaryColor, sidebarColor: branding.sidebarColor }));
+    applyBranding(branding);
+    localStorage.setItem(BRAND_COLORS_KEY, JSON.stringify({
+      name: branding.name, primaryColor: branding.primaryColor, sidebarColor: branding.sidebarColor,
+      logoUrl: branding.logoUrl, loginHeadline: branding.loginHeadline, loginSubtext: branding.loginSubtext,
+    }));
   }
 
   const ROLE_MAP = {
@@ -59,7 +81,7 @@
     operations: 'Transport / Library staff', superadmin: 'Super Admin', compliance: 'Compliance Administrator',
   };
 
-  // Per-role nav item lists — identical to the original app.js `navs`
+  // Per-role nav item lists, identical to the original app.js `navs`
   // object. Item 0 is always "home" for that role and always resolves to
   // dashboard.html; everything else is looked up in SLUG_FILE_MAP.
   const navs = {
@@ -76,33 +98,34 @@
   };
   const slug = (v) => v.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
-  // One icon per concept, keyed by slug — not by position, so the same
+  // One icon per concept, keyed by slug, not by position, so the same
   // item always gets the same icon no matter which role's list it's in
   // (a plain per-index cycle previously gave unrelated items matching
   // icons just because they landed at the same array position).
   const ICONS_BY_SLUG = {
-    'schools-campuses': '◫', admissions: '◈', 'apply-for-admission': '◈',
-    students: '♙', classes: '▤', 'my-classes': '▤', teachers: '✎', academics: '✎',
-    'content-approvals': '✦', lessons: '✎', timetable: '⏲', 'exams-and-results': '▤', results: '▤',
-    assignments: '⌘', 'cbt-exams': '⌘', attendance: '✓',
-    fees: '₦', 'fees-and-payments': '₦', invoices: '₦', payments: '₦', arrears: '₦', reconciliation: '₦', expenses: '₦', finance: '₦', subscriptions: '₦',
-    'people-and-payroll': '♙', payroll: '♙', employees: '♙', users: '♙', profile: '♙',
-    leave: '⏱', documents: '▥', performance: '✦', recruitment: '◈',
-    'payroll-audit-trail': '⚖', 'statutory-rules': '⚖', 'compliance-review': '⚖',
-    messages: '✉', communication: '✉', parents: '✉', support: '✉',
-    reports: '☰', 'audit-logs': '☰', settings: '⚙', 'system-health': '⚙', integrations: '⚙', 'feature-flags': '⚙',
-    library: '▥', 'transport-routes': '⚑', 'vehicles-and-drivers': '⚑', incidents: '⚑', notices: '⚑',
-    'student-manifest': '▤', schools: '◫', 'my-children': '♥', more: '⌘',
+    'schools-campuses': 'building-columns', admissions: 'file-signature', 'apply-for-admission': 'file-signature',
+    students: 'user-graduate', classes: 'chalkboard', 'my-classes': 'chalkboard', teachers: 'chalkboard-user', academics: 'book',
+    'content-approvals': 'stamp', lessons: 'book-open', timetable: 'clock', 'exams-and-results': 'file-lines', results: 'file-lines',
+    assignments: 'clipboard-list', 'cbt-exams': 'laptop-code', attendance: 'clipboard-check',
+    fees: 'sack-dollar', 'fees-and-payments': 'sack-dollar', invoices: 'file-invoice-dollar', payments: 'credit-card', arrears: 'triangle-exclamation', reconciliation: 'scale-balanced', expenses: 'receipt', finance: 'chart-line', subscriptions: 'rotate',
+    'people-and-payroll': 'users', payroll: 'money-check-dollar', employees: 'id-badge', users: 'users', profile: 'circle-user',
+    leave: 'plane-departure', documents: 'folder-open', performance: 'chart-simple', recruitment: 'user-plus',
+    'payroll-audit-trail': 'scale-balanced', 'statutory-rules': 'gavel', 'compliance-review': 'clipboard-check',
+    messages: 'envelope', communication: 'bullhorn', parents: 'people-roof', support: 'headset',
+    reports: 'chart-pie', 'audit-logs': 'list-check', settings: 'gear', 'system-health': 'heart-pulse', integrations: 'plug', 'feature-flags': 'toggle-on',
+    library: 'books', 'transport-routes': 'bus', 'vehicles-and-drivers': 'bus', incidents: 'triangle-exclamation', notices: 'bell',
+    'student-manifest': 'clipboard-list', schools: 'building-columns', 'my-children': 'heart', more: 'ellipsis',
   };
   function iconFor(item, index) {
-    if (index === 0) return '⌂'; // item 0 always resolves to dashboard.html regardless of label
-    return ICONS_BY_SLUG[slug(item)] || '•';
+    if (index === 0) return '<i class="fa-solid fa-house"></i>'; // item 0 always resolves to dashboard.html regardless of label
+    const name = ICONS_BY_SLUG[slug(item)];
+    return `<i class="fa-solid fa-${name || 'circle'}"></i>`;
   }
 
   // Every nav-item slug (across every role, minus each role's item-0
   // "home" which is hardcoded to dashboard.html) mapped to the page file
   // that owns it. Files not yet built in this pass will 404 until a later
-  // split step creates them — see the module-split status doc.
+  // split step creates them; see the module-split status doc.
   const SLUG_FILE_MAP = {
     students: 'students.html', admissions: 'students.html#admissions',
     academics: 'academics.html', teachers: 'academics.html#teachers', 'content-approvals': 'academics.html#content-approvals',
@@ -134,12 +157,12 @@
   // ---- generic mock-page renderer ----
   // Backs every nav item that has no dedicated module/data source yet
   // (Finance, Employees, Leave, Invoices, all SuperAdmin/Compliance/
-  // Transport pages, etc.) — an honest "Coming soon" empty state rather
+  // Transport pages, etc.), an honest "Coming soon" empty state rather
   // than fabricated KPI numbers and rows. Nothing here should ever look
   // like real data.
   function renderGenericPage(label) {
     const id = slug(label);
-    return `<section class="page workspace-page visible" id="${id}"><div class="page-heading"><div><p class="eyebrow">Not built yet</p><h1>${label}</h1><p class="subtitle">No backend module exists for this yet — this isn't showing you fake data.</p></div></div><section class="data-card"><div class="empty-state"><span class="mini-avatar">✓</span><h3>Coming soon</h3><p>${label} hasn't been built on the backend yet (see CLAUDE.md's Phase 2+ scope). When it is, this page will show real data instead.</p></div></section></section>`;
+    return `<section class="page workspace-page visible" id="${id}"><div class="page-heading"><div><p class="eyebrow">Not built yet</p><h1>${label}</h1><p class="subtitle">No backend module exists for this yet: this isn't showing you fake data.</p></div></div><section class="data-card"><div class="empty-state"><span class="mini-avatar">✓</span><h3>Coming soon</h3><p>${label} hasn't been built on the backend yet (see CLAUDE.md's Phase 2+ scope). When it is, this page will show real data instead.</p></div></section></section>`;
   }
 
   // ---- auth core (was auth-bridge.js) ----
@@ -186,7 +209,7 @@
     if (res.status === 401) {
       clearSession();
       location.href = 'index.html';
-      throw new Error('Your session expired — please sign in again.');
+      throw new Error('Your session expired. Please sign in again.');
     }
     if (!res.ok) {
       let message = `${res.status} ${res.statusText}`;
@@ -202,7 +225,7 @@
   function logout() { clearSession(); location.href = 'index.html'; }
 
   // Role is always the signed-in user's real role now that the "Viewing
-  // as" switcher is gone — no more honoring a stale localStorage override
+  // as" switcher is gone. No more honoring a stale localStorage override
   // from earlier testing.
   function getActiveRole() {
     const user = getUser();
@@ -228,9 +251,12 @@
     document.getElementById('modalOverlay').style.display = 'none';
     document.getElementById('modalBox').innerHTML = '';
   }
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
   function fieldHtml(f) {
     if (f.type === 'select') return `<div class="form-field"><label>${f.label}</label><select name="${f.name}">${f.options.map((o) => `<option>${o}</option>`).join('')}</select></div>`;
-    if (f.type === 'textarea') return `<div class="form-field"><label>${f.label}</label><textarea name="${f.name}" placeholder="${f.placeholder || ''}"></textarea></div>`;
+    if (f.type === 'textarea') return `<div class="form-field"><label>${f.label}</label><textarea name="${f.name}" placeholder="${f.placeholder || ''}">${escapeHtml(f.value)}</textarea></div>`;
     if (f.type === 'checkboxes') return `<div class="form-field"><label>${f.label}</label><div class="checkbox-group">${f.options.length ? f.options.map((o) => `<label class="checkbox-option"><input type="checkbox" name="${f.name}" value="${o.value}">${o.label}</label>`).join('') : '<p class="modal-sub" style="margin:0">None yet.</p>'}</div></div>`;
     return `<div class="form-field"><label>${f.label}</label><input name="${f.name}" type="${f.type || 'text'}" placeholder="${f.placeholder || ''}" value="${f.value || ''}"></div>`;
   }
@@ -254,7 +280,7 @@
 
   /** Paints the topbar year/term buttons from real data (falling back to
    * whatever was cached in localStorage from the last successful load, so
-   * there's no flash of placeholder text on every page navigation — this
+   * there's no flash of placeholder text on every page navigation; this
    * is a multi-page app, so the shell remounts from scratch each time). */
   async function refreshSessionTermBadge() {
     let current;
@@ -269,7 +295,7 @@
     localStorage.setItem(TERM_LABEL_KEY, termLabel);
   }
 
-  /** The topbar's session/term picker — for PROPRIETOR/PRINCIPAL this is
+  /** The topbar's session/term picker: for PROPRIETOR/PRINCIPAL this is
    * also where "advance to next term" and "start a new session" live, the
    * one place isCurrent ever flips (AcademicSessionsService.activateTerm).
    * Every other role gets a read-only view of the same current session/term. */
@@ -342,7 +368,7 @@
   }
 
   /** New session + its three terms, created together and the first
-   * activated immediately — the only path that gets a brand-new session
+   * activated immediately; the only path that gets a brand-new session
    * off the ground, since a session with no current term isn't reachable
    * by "advance to next term" (that only steps within an existing one). */
   function openNewSessionModal() {
@@ -375,7 +401,7 @@
 
   // ---- global search (topbar) ----
   // Client-filtered over the same tenant/role-scoped endpoints every page
-  // already uses — /students is scoped per role server-side (own children
+  // already uses: /students is scoped per role server-side (own children
   // for PARENT, own class for TEACHER, everyone for admin roles), so this
   // is real data throughout, never a mocked result set.
   const STAFF_SEARCH_ROLES = new Set(['PROPRIETOR', 'PRINCIPAL', 'HR_ADMIN', 'BURSAR']);
@@ -411,6 +437,65 @@
     } catch (err) { resultsEl.innerHTML = `<p class="modal-sub">Could not search (${err.message})</p>`; }
   }
 
+  // ---- notifications ----
+  function initNotifications() {
+    const btn = document.getElementById('notificationBtn');
+    const panel = document.getElementById('notifPanel');
+    const badge = document.getElementById('notifBadge');
+    if (!btn || !panel) return;
+    let items = [];
+    let loaded = false;
+
+    function renderBadge() {
+      const unread = items.filter((n) => !n.readAt).length;
+      if (badge) badge.hidden = unread === 0;
+    }
+    function renderPanel() {
+      const head = '<p class="notif-panel-head">Notifications</p>';
+      if (!items.length) { panel.innerHTML = head + '<p class="notif-empty">You\'re all caught up.</p>'; return; }
+      panel.innerHTML = head + items.slice(0, 25).map((n) => `<button type="button" class="notif-item ${n.readAt ? '' : 'unread'}" data-notif-id="${n.id}"><strong>${n.title}</strong><span>${n.body}</span><small>${new Date(n.createdAt).toLocaleString()}</small></button>`).join('');
+    }
+    async function load() {
+      try { items = await api('/notifications/me'); } catch (err) { items = []; }
+      loaded = true;
+      renderBadge();
+      renderPanel();
+    }
+    function open() {
+      panel.hidden = false;
+      btn.setAttribute('aria-expanded', 'true');
+      if (!loaded) load(); else renderPanel();
+    }
+    function close() {
+      panel.hidden = true;
+      btn.setAttribute('aria-expanded', 'false');
+    }
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (panel.hidden) open(); else close();
+    });
+    panel.addEventListener('click', async (e) => {
+      const item = e.target.closest('[data-notif-id]');
+      if (!item) return;
+      const notif = items.find((n) => n.id === item.dataset.notifId);
+      if (notif && !notif.readAt) {
+        try {
+          await api(`/notifications/${notif.id}/read`, { method: 'PATCH' });
+          notif.readAt = new Date().toISOString();
+          renderBadge();
+          renderPanel();
+        } catch (err) { toast(`Could not mark as read (${err.message})`); }
+      }
+    });
+    document.addEventListener('click', (e) => {
+      if (!panel.hidden && !panel.contains(e.target) && e.target !== btn && !btn.contains(e.target)) close();
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !panel.hidden) close(); });
+
+    load();
+  }
+
   // ---- nav rendering ----
   // Some static servers (e.g. `serve`'s clean-URL mode) redirect
   // dashboard.html -> /dashboard, stripping the extension. Normalize it
@@ -421,9 +506,9 @@
     return last.includes('.') ? last : last + '.html';
   }
   // Admissions, Fees/billing, Schools/Campuses, and People & payroll have
-  // no real backend behind them yet (each is still a hardcoded mock array
-  // — see students.js's admissions kanban, settings.js's campus list,
-  // people.js's payroll run) — left out of the sidebar entirely for now
+  // no real backend behind them yet (each is still a hardcoded mock array;
+  // see students.js's admissions kanban, settings.js's campus list,
+  // people.js's payroll run), left out of the sidebar entirely for now
   // rather than shown as a dead/blurred link.
   const HIDDEN_SLUGS = new Set([
     'admissions', 'apply-for-admission',
@@ -431,6 +516,7 @@
     'schools-campuses',
     'people-and-payroll', 'payroll', 'employees', 'leave', 'documents', 'performance',
     'recruitment', 'payroll-audit-trail', 'statutory-rules', 'compliance-review',
+    'library',
   ]);
 
   function renderNav(role) {
@@ -474,14 +560,18 @@
     const user = getUser();
     const role = getActiveRole();
 
+    // PROPRIETOR/PRINCIPAL show generically as "Admin" everywhere a name
+    // is displayed (sidebar, topbar badge, dashboard greeting), not by
+    // personal first/last name — every other role still shows by name.
+    const displayName = (user.role === 'PROPRIETOR' || user.role === 'PRINCIPAL') ? 'Admin' : `${user.firstName} ${user.lastName}`;
     const badge = document.getElementById('sessionBadge');
-    if (badge) badge.textContent = `${user.firstName} ${user.lastName} · ${user.role}`;
+    if (badge) badge.textContent = `${displayName} · ${user.role}`;
     const profileName = document.getElementById('profileName');
-    if (profileName) profileName.textContent = `${user.firstName} ${user.lastName}`;
+    if (profileName) profileName.textContent = displayName;
     const profileRole = document.getElementById('profileRole');
     if (profileRole) profileRole.textContent = ROLE_TITLES[role] || user.role;
     const profileInitials = document.getElementById('profileInitials');
-    if (profileInitials) profileInitials.textContent = initialsOf(`${user.firstName} ${user.lastName}`);
+    if (profileInitials) profileInitials.textContent = initialsOf(displayName);
 
     const yearBtn = document.getElementById('sessionYearBtn');
     if (yearBtn && yearBtn.firstChild) yearBtn.firstChild.textContent = (localStorage.getItem(SESSION_LABEL_KEY) || '—') + ' ';
@@ -508,7 +598,7 @@
         const label = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
         collapseBtn.title = label;
         collapseBtn.setAttribute('aria-label', label);
-        collapseBtn.textContent = collapsed ? '»' : '«';
+        collapseBtn.innerHTML = collapsed ? '<i class="fa-solid fa-chevron-right"></i>' : '<i class="fa-solid fa-chevron-left"></i>';
       };
       applyCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1');
       collapseBtn.addEventListener('click', () => {
@@ -521,6 +611,8 @@
     const searchBtn = document.getElementById('topbarSearchBtn');
     if (searchBtn) searchBtn.addEventListener('click', openGlobalSearch);
 
+    initNotifications();
+
     document.addEventListener('click', (e) => {
       if (e.target.closest('[data-modal-close]') || e.target === document.getElementById('modalOverlay')) closeModal();
       const t = e.target.closest('[data-toast]'); if (t) toast(t.dataset.toast);
@@ -529,7 +621,7 @@
       const pc = e.target.closest('[data-pay-child]');
       if (pc) {
         if (typeof window.SchoolOS.onPayChild === 'function') window.SchoolOS.onPayChild(pc.dataset.payChild);
-        else toast('Fees module isn’t split into its own page yet — coming soon');
+        else toast('Fees module isn’t split into its own page yet: coming soon');
       }
       const modal = e.target.closest('[data-modal]');
       if (modal) { const fn = (window.SchoolOS.modalOpeners || {})[modal.dataset.modal]; if (fn) fn(); }
@@ -538,7 +630,7 @@
 
     // A sidebar link to a different section of the SAME html file (e.g.
     // academics.html#teachers while already on academics.html) only
-    // changes the URL hash — the browser doesn't reload the document, so
+    // changes the URL hash; the browser doesn't reload the document, so
     // it never fires. Each page's own script picks its active tab from
     // location.hash exactly once, at load time, so without this the
     // sidebar looks like it "does nothing" for same-file links. Reloading
@@ -550,7 +642,7 @@
 
   window.SchoolOS = {
     api, getUser, getAccessToken, logout, getActiveRole, setActiveRole,
-    fileForSlug, slug, money, initialsOf, toast, openModal, closeModal, formModal, detailModal,
+    fileForSlug, slug, money, initialsOf, escapeHtml, toast, openModal, closeModal, formModal, detailModal,
     renderGenericPage, refreshBrandColors,
     onRoleChange: null, onCreateNew: null, onPayChild: null, modalOpeners: {},
     ready: null,
@@ -561,11 +653,10 @@
     if (getAccessToken() && getUser()) { location.href = 'dashboard.html'; return; }
 
     const LOGIN_ROLE_TILES = {
-      student: { emailPlaceholder: 'firstname.lastname@greenfield.test', hint: 'Student login — email and password issued when your record was created (password123 by default).' },
-      teacher: { emailPlaceholder: 'firstname.lastname@greenfield.test', hint: 'Teacher login — email and password issued when your account was created (password123 by default).' },
-      parent: { emailPlaceholder: 'firstname.lastname@greenfield.test', hint: 'Parent login — email and password issued when your guardian record was created (password123 by default).' },
-      staff: { emailPlaceholder: 'bursar@greenfield.test', hint: 'Bursar, HR, librarian, transport and other operations staff.' },
-      admin: { emailPlaceholder: 'proprietor@greenfield.test', hint: 'Proprietor and Principal accounts — full school oversight.' },
+      student: { emailPlaceholder: 'firstname.lastname@greenfield.test', hint: 'Student login: email and password issued when your record was created (password123 by default).' },
+      parent: { emailPlaceholder: 'firstname.lastname@greenfield.test', hint: 'Parent login: email and password issued when your guardian record was created (password123 by default).' },
+      staff: { emailPlaceholder: 'teacher@greenfield.test', hint: 'Teachers, bursar, HR, librarian, transport and other operations staff: email and password issued when your account was created.' },
+      admin: { emailPlaceholder: 'proprietor@greenfield.test', hint: 'Proprietor and Principal accounts: full school oversight.' },
     };
     function selectLoginRole(roleKey) {
       const tile = LOGIN_ROLE_TILES[roleKey];
@@ -577,7 +668,8 @@
       if (hint) hint.textContent = tile.hint;
     }
     document.querySelectorAll('.login-role-card').forEach((card) => card.addEventListener('click', () => selectLoginRole(card.dataset.role)));
-    selectLoginRole('student');
+    const firstCard = document.querySelector('.login-role-card');
+    if (firstCard) selectLoginRole(firstCard.dataset.role);
 
     const form = document.getElementById('loginForm');
     if (!form) return;

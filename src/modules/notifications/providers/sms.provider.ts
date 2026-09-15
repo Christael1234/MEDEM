@@ -6,7 +6,7 @@ import {
   NotificationProvider,
 } from './notification-provider.interface';
 
-/** Stub adapter — same shape as EmailProvider. `SMS_PROVIDER` defaults to
+/** Stub adapter, same shape as EmailProvider. `SMS_PROVIDER` defaults to
  * `none`. Real integration (Termii, Twilio, etc.) is a non-goal for now. */
 @Injectable()
 export class SmsProvider implements NotificationProvider {
@@ -19,7 +19,7 @@ export class SmsProvider implements NotificationProvider {
 
   async send(_payload: NotificationDispatchPayload): Promise<NotificationDispatchResult> {
     throw new Error(
-      'SmsProvider has no real implementation yet — set SMS_PROVIDER and implement send() when a provider is chosen.',
+      'SmsProvider has no real implementation yet, set SMS_PROVIDER and implement send() when a provider is chosen.',
     );
   }
 }

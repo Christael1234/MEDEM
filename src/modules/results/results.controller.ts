@@ -32,6 +32,16 @@ export class ResultsController {
     return this.resultsService.publish(id);
   }
 
+  @Roles('PROPRIETOR', 'PRINCIPAL')
+  @Get('report')
+  report(
+    @Query('termId') termId?: string,
+    @Query('subjectId') subjectId?: string,
+    @Query('classArmId') classArmId?: string,
+  ) {
+    return this.resultsService.report({ termId, subjectId, classArmId });
+  }
+
   @AllowAnyAuthenticatedRole()
   @Get()
   list(

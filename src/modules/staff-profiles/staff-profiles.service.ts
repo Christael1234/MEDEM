@@ -42,7 +42,7 @@ export class StaffProfilesService {
   }
 
   /** Creates the User (role TEACHER, auto-generated login) and StaffProfile
-   * together in one transaction — same pattern as StudentsService.create,
+   * together in one transaction, same pattern as StudentsService.create,
    * so a Proprietor/Principal adding a teacher gets a working login on the
    * spot instead of a separate account-provisioning step. */
   async createTeacher(dto: CreateTeacherDto) {
@@ -50,7 +50,7 @@ export class StaffProfilesService {
 
     // ClassArm isn't auto-tenant-scoped (see tenant-scoping.extension.ts),
     // so tenant ownership has to be checked explicitly before trusting it
-    // — a cross-tenant classArmId must never be assignable here (rule #1).
+    // A cross-tenant classArmId must never be assignable here (rule #1).
     // The campus match is a domain rule, not a security one: a class
     // teacher should actually be based at the campus their class is on.
     if (dto.classArmId) {
@@ -104,7 +104,7 @@ export class StaffProfilesService {
       });
 
       // Conditional update (classTeacherId: null in the where clause) makes
-      // this atomic against a concurrent request assigning the same arm —
+      // this atomic against a concurrent request assigning the same arm,
       // the earlier read-then-check above is just a fast-fail, not the
       // actual guarantee. count === 0 means someone else won the race.
       if (dto.classArmId) {
@@ -139,7 +139,7 @@ export class StaffProfilesService {
       where: campusId ? { campusId } : undefined,
       include: { user: true },
     });
-    // user: true pulls passwordHash/mfaSecret off the row — never let
+    // user: true pulls passwordHash/mfaSecret off the row: never let
     // those reach the client (same rule sanitizeUser enforces elsewhere).
     return staff.map((s) => ({ ...s, user: sanitizeUser(s.user) }));
   }
@@ -161,7 +161,7 @@ export class StaffProfilesService {
   }
 
   /** Updates the teacher's display name (lives on the linked User) and/or
-   * their staff record fields together — CLAUDE.md rule #5 treats name
+   * their staff record fields together: CLAUDE.md rule #5 treats name
    * changes as a sensitive profile change, so both writes are audited. */
   async update(id: string, dto: UpdateTeacherDto) {
     const staffProfile = await this.prisma.db.staffProfile.findUniqueOrThrow({ where: { id } });

@@ -17,7 +17,7 @@ export interface ArmGenerationOutcome {
   unplacedCount: number;
 }
 
-/** day (1-5) * 1000 + period — collision-free as long as no arm's day has
+/** day (1-5) * 1000 + period, collision-free as long as no arm's day has
  * 1000+ periods (a 30-minute-period school day would need to run for over
  * 8 days straight to hit that). Used for O(1) teacher-availability checks. */
 function slotKey(day: number, period: number): number {
@@ -36,7 +36,7 @@ function shuffle<T>(arr: T[], rng: () => number): T[] {
  * Distributes `slotsPerWeek` evenly across the given subjects (as periods
  * per week), so the arm's grid ends up completely filled with no idle
  * periods. Remainder periods (slotsPerWeek % subjectCount) go one each to
- * the first subjects in the (stable, sorted) list — deterministic rather
+ * the first subjects in the (stable, sorted) list, deterministic rather
  * than random, so re-generating doesn't reshuffle who gets the extra period.
  * `slotsPerWeek` is caller-computed per class (see TimetableService.generate)
  * rather than a single tenant-wide constant, since a Nursery class's day is
@@ -62,15 +62,15 @@ export function distributePeriodsPerWeek<T extends { subjectId: string }>(
  * (cell ordering), since a subject needing more than 5 periods/week simply
  * can't avoid repeating a day.
  *
- * `periods` is this arm's own period list — a Nursery arm gets only the
+ * `periods` is this arm's own period list: a Nursery arm gets only the
  * first N periods of the tenant's full day (N = its subject count), every
- * other arm gets the full day — so `cells` is built per-arm, not once
+ * other arm gets the full day, so `cells` is built per-arm, not once
  * globally.
  *
  * Backtracking DFS with a step budget: if the budget is exhausted before a
  * full placement is found, every unit for this arm is reported unplaced
  * (nothing partial is committed) rather than risking an inconsistent
- * half-solution — the caller decides how to surface that as a conflict.
+ * half-solution; the caller decides how to surface that as a conflict.
  */
 function scheduleArm(
   armId: string,
@@ -146,7 +146,7 @@ function scheduleArm(
  * Schedules every arm's lesson units, sharing one teacher-occupancy map
  * across arms so a teacher assigned to the same subject in two arms of the
  * same class (a single TeacherSubjectAssignment covers every arm of its
- * SchoolClass) never ends up double-booked between them — and so a teacher
+ * SchoolClass) never ends up double-booked between them, and so a teacher
  * split between, say, a Nursery arm and a JSS arm is checked against the
  * same tenant-wide period-index/clock-time mapping either way.
  */

@@ -10,7 +10,7 @@ import { TimetableService } from '../../timetable/timetable.service';
 
 /**
  * Multi-child aware: GuardiansService.myChildren() resolves every linked
- * child via StudentGuardian from the session — a parent with three kids
+ * child via StudentGuardian from the session: a parent with three kids
  * gets one login and a switcher, not three logins (Phase 4 doc, build
  * order step 5).
  */
@@ -57,7 +57,7 @@ export class ParentPortalController {
   @Get('children/:studentId/assignments')
   async childAssignments(@Param('studentId') studentId: string) {
     // Assignment has no per-student scoping of its own (it's scoped by
-    // class arm) — verify the child belongs to this parent *before*
+    // class arm), verify the child belongs to this parent *before*
     // touching the student's classArmId, rather than letting an arbitrary
     // studentId reveal which class a stranger's child is in.
     await this.assertOwnChild(studentId);

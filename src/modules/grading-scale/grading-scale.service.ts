@@ -69,11 +69,11 @@ export class GradingScaleService {
     });
   }
 
-  /** Used by ResultsService at result-creation time — computed once and
+  /** Used by ResultsService at result-creation time, computed once and
    * stored on the Result, never recalculated later (a scale edit must not
    * retroactively rewrite a grade already on the books). Returns null
    * (not an error) when no band is configured yet or none covers this
-   * score — an honest "ungraded" beats a guessed grade. */
+   * score: an honest "ungraded" beats a guessed grade. */
   async computeGrade(totalScore: number): Promise<string | null> {
     const band = await this.prisma.db.gradeBand.findFirst({
       where: { minScore: { lte: totalScore }, maxScore: { gte: totalScore } },

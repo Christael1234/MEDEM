@@ -10,7 +10,7 @@ import { PrismaExceptionFilter } from '../../src/common/filters/prisma-exception
  * The two suites CLAUDE.md calls out as mattering most at this stage:
  * tenant isolation (a user from tenant A can never read tenant B's data)
  * and permission regression (each role gets an allow/deny check against a
- * real endpoint) — plus a couple of state-machine ordering checks since
+ * real endpoint), plus a couple of state-machine ordering checks since
  * they're cheap to add once the app is already booted.
  *
  * Self-contained: creates its own SUPER_ADMIN and two fresh tenants per
@@ -143,7 +143,7 @@ describe('Tenant isolation & RBAC (e2e)', () => {
       const res = await request(app.getHttpServer())
         .get('/students')
         .set('Authorization', `Bearer ${superAdminToken}`);
-      // No tenant context for SUPER_ADMIN — the tenant-scoping extension
+      // No tenant context for SUPER_ADMIN: the tenant-scoping extension
       // rejects the query outright rather than silently returning nothing.
       expect(res.status).toBeGreaterThanOrEqual(400);
     });

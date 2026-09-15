@@ -33,7 +33,7 @@ export class AcademicSessionsService {
   }
 
   /** Term has no tenantId column and isn't auto-scoped by the Prisma
-   * extension — ownership is enforced here by requiring the parent
+   * extension; ownership is enforced here by requiring the parent
    * AcademicSession to resolve through the tenant-scoped client first. */
   async createTerm(dto: CreateTermDto) {
     await this.prisma.db.academicSession.findUniqueOrThrow({
@@ -61,7 +61,7 @@ export class AcademicSessionsService {
     });
   }
 
-  /** Same pattern as ClassesService.assertArmBelongsToTenant — Term has
+  /** Same pattern as ClassesService.assertArmBelongsToTenant: Term has
    * no tenantId of its own, so ownership is proven via its tenant-scoped
    * parent AcademicSession. */
   async assertTermBelongsToTenant(termId: string): Promise<void> {
@@ -72,7 +72,7 @@ export class AcademicSessionsService {
 
   /** Whichever Term has isCurrent = true, scoped to the caller's tenant by
    * querying through the tenant-scoped AcademicSession parent first (Term
-   * itself has no tenantId and isn't auto-scoped — same pattern as
+   * itself has no tenantId and isn't auto-scoped, same pattern as
    * assertTermBelongsToTenant). */
   async getCurrentTerm() {
     const session = await this.prisma.db.academicSession.findFirst({
@@ -83,7 +83,7 @@ export class AcademicSessionsService {
   }
 
   /** End-of-session student promotion only makes sense once the school is
-   * actually in its last term — gates StudentsService's bulk promotion so
+   * actually in its last term: gates StudentsService's bulk promotion so
    * it can't be run mid-year by mistake. */
   async assertCurrentTermIsThird(): Promise<void> {
     const current = await this.getCurrentTerm();
@@ -98,8 +98,8 @@ export class AcademicSessionsService {
     return this.prisma.db.academicSession.findFirst({ where: { isCurrent: true } });
   }
 
-  /** Marks one Term as "current" — and its parent AcademicSession along
-   * with it — unsetting every other term/session for the tenant first.
+  /** Marks one Term as "current", and its parent AcademicSession along
+   * with it, unsetting every other term/session for the tenant first.
    * This is the one write path that ever flips isCurrent, so both the
    * "advance to next term" and "start new session" UI actions reduce to
    * a single call here rather than each hand-rolling the unset/set pair.

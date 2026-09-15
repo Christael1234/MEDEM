@@ -3,45 +3,57 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SchoolOS — Sign in</title>
+    <title>SchoolOS: Sign in</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=modules-v12" />
+    <link rel="stylesheet" href="styles.css?v=modules-v20" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" /></noscript>
   </head>
-  <body style="background:var(--canvas)">
-    <div class="modal-overlay" id="loginOverlay" style="display:flex;position:static;min-height:100vh;background:var(--canvas)">
-      <div class="modal-box">
-        <p class="eyebrow">SchoolOS</p>
-        <h2>Sign in</h2>
-        <p class="modal-sub">Choose your role, then sign in with your school email and password.</p>
-
-        <div class="login-role-grid" id="loginRoleGrid">
-          <button type="button" class="login-role-card" data-role="student"><span class="login-role-icon">◉</span><strong>Student</strong></button>
-          <button type="button" class="login-role-card" data-role="teacher"><span class="login-role-icon">✎</span><strong>Teacher</strong></button>
-          <button type="button" class="login-role-card" data-role="parent"><span class="login-role-icon">♥</span><strong>Parent</strong></button>
-          <button type="button" class="login-role-card" data-role="staff"><span class="login-role-icon">♙</span><strong>Staff</strong></button>
-          <button type="button" class="login-role-card" data-role="admin"><span class="login-role-icon">♔</span><strong>Admin</strong></button>
+  <body>
+    <div class="login-shell" id="loginOverlay">
+      <div class="login-card">
+        <div class="login-visual">
+          <div>
+            <div class="login-visual-mark" id="loginVisualMark"><i class="fa-solid fa-graduation-cap"></i></div>
+            <h1 id="loginHeadline">Welcome back.</h1>
+            <p id="loginSubtext">Check your results, attendance, timetable and fees, all in one place, kept up to date by your school.</p>
+          </div>
+          <p class="login-visual-foot"><i class="fa-solid fa-user-graduate"></i> Student &amp; Parent Portal</p>
         </div>
 
-        <form id="loginForm">
-          <div class="form-field">
-            <label for="loginEmail">Email</label>
-            <input type="email" id="loginEmail" required autocomplete="username" placeholder="you@greenfield.test" />
+        <div class="login-form-panel">
+          <p class="eyebrow">SchoolOS</p>
+          <h2>Sign in</h2>
+          <p class="modal-sub">Choose your role, then sign in with your school email and password.</p>
+
+          <div class="login-role-grid" id="loginRoleGrid">
+            <button type="button" class="login-role-card" data-role="student"><span class="login-role-icon"><i class="fa-solid fa-user-graduate"></i></span><strong>Student</strong></button>
+            <button type="button" class="login-role-card" data-role="parent"><span class="login-role-icon"><i class="fa-solid fa-heart"></i></span><strong>Parent</strong></button>
           </div>
-          <div class="form-field">
-            <label for="loginPassword">Password</label>
-            <input type="password" id="loginPassword" required autocomplete="current-password" />
-          </div>
-          <p class="modal-sub" id="loginHint" style="margin:-8px 0 14px"></p>
-          <p id="loginError" style="color:#b3261e;font:500 12px var(--sans);min-height:16px;margin:0 0 8px"></p>
-          <div class="form-actions">
-            <button type="submit" class="new-button" id="loginSubmit">Sign in</button>
-          </div>
-        </form>
+
+          <form id="loginForm">
+            <div class="form-field">
+              <label for="loginEmail">Email</label>
+              <input type="email" id="loginEmail" required autocomplete="username" placeholder="you@greenfield.test" />
+            </div>
+            <div class="form-field">
+              <label for="loginPassword">Password</label>
+              <input type="password" id="loginPassword" required autocomplete="current-password" />
+            </div>
+            <p class="modal-sub" id="loginHint" style="margin:-8px 0 14px"></p>
+            <p id="loginError" style="color:#b3261e;font:500 12px var(--sans);min-height:16px;margin:0 0 8px"></p>
+            <div class="form-actions">
+              <button type="submit" class="new-button" id="loginSubmit" style="width:100%">Sign in</button>
+            </div>
+          </form>
+
+          <p class="login-switch">Staff or admin? <a href="staff-login.html">Sign in here <i class="fa-solid fa-arrow-right"></i></a></p>
+        </div>
       </div>
     </div>
 
-    <script src="shared.js?v=6"></script>
+    <script src="shared.js?v=16"></script>
   </body>
 </html>

@@ -31,7 +31,7 @@ export class CreateStudentDto {
   @IsEnum(StudentStatus)
   status?: StudentStatus;
 
-  // Guardian 1 — required: either link an existing guardian (guardianId,
+  // Guardian 1 (required): either link an existing guardian (guardianId,
   // found via GET /guardians?search=) or provide a new one's name. Service
   // layer enforces "one of the two" since class-validator can't express an
   // OR-required constraint cleanly across two field groups.
@@ -58,7 +58,7 @@ export class CreateStudentDto {
   @IsEnum(GuardianRelationship)
   guardianRelationship!: GuardianRelationship;
 
-  // Guardian 2 — fully optional, same shape.
+  // Guardian 2, fully optional, same shape.
   @IsOptional()
   @IsString()
   secondGuardianId?: string;

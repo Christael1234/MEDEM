@@ -5,7 +5,7 @@ import {
   NotificationProvider,
 } from './notification-provider.interface';
 
-/** Always configured — in-app delivery is the Notification row
+/** Always configured: in-app delivery is the Notification row
  * NotificationService writes unconditionally; this provider only marks
  * the corresponding CommunicationLog entry as delivered. */
 @Injectable()

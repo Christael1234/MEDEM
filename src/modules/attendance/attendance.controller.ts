@@ -31,6 +31,24 @@ export class AttendanceController {
     return this.attendanceService.listPendingCorrections();
   }
 
+  // Same reasoning: "overview" must come before ':id/correct' so Nest
+  // never tries to match it as an :id.
+  @AllowAnyAuthenticatedRole()
+  @Get('overview/summary')
+  overviewSummary() {
+    return this.attendanceService.overviewSummary();
+  }
+
+  @Roles('PROPRIETOR', 'PRINCIPAL')
+  @Get('report')
+  report(
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('classArmId') classArmId?: string,
+  ) {
+    return this.attendanceService.report({ from, to, classArmId });
+  }
+
   @Roles('PROPRIETOR', 'PRINCIPAL', 'TEACHER')
   @Patch(':id/correct')
   correct(@Param('id') id: string, @Body() dto: CorrectAttendanceDto) {

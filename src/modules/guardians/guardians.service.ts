@@ -16,7 +16,7 @@ export class GuardiansService {
     private readonly requestContext: RequestContextService,
   ) {}
 
-  /** Backs the "search existing parent" picker on student creation — e.g.
+  /** Backs the "search existing parent" picker on student creation, e.g.
    * finding a sibling's parent already on file instead of creating a
    * duplicate guardian record for the same person. Requires a real query;
    * an empty/near-empty one intentionally returns nothing rather than the
@@ -37,7 +37,7 @@ export class GuardiansService {
     });
   }
 
-  /** Creates a real portal login alongside the Guardian profile — same
+  /** Creates a real portal login alongside the Guardian profile, same
    * pattern as StaffProfilesService.createTeacher / StudentsService.create,
    * so a parent added by the school can sign in immediately rather than
    * needing a separate account-provisioning step. */
@@ -76,7 +76,7 @@ export class GuardiansService {
   }
 
   async link(dto: LinkGuardianDto) {
-    // Both sides are tenant-scoped models — resolving them confirms
+    // Both sides are tenant-scoped models: resolving them confirms
     // neither id belongs to another tenant before the join row is made.
     await this.prisma.db.student.findUniqueOrThrow({ where: { id: dto.studentId } });
     await this.prisma.db.guardian.findUniqueOrThrow({ where: { id: dto.guardianId } });

@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 
 /**
  * Atomically allocates gap-free-per-scope numbers backed by
- * NumberingSequence — student IDs, invoice numbers, receipt numbers,
+ * NumberingSequence: student IDs, invoice numbers, receipt numbers,
  * payroll run numbers (the latter three land in later phases but should
  * consume this rather than inventing their own counter, per CLAUDE.md).
  */

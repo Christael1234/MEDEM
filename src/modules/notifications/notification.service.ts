@@ -13,7 +13,7 @@ export interface NotifyParams {
   body: string;
   entityType?: string;
   entityId?: string;
-  /** Defaults to [IN_APP] — always-on regardless of external providers. */
+  /** Defaults to [IN_APP], always-on regardless of external providers. */
   channels?: CommunicationChannel[];
   templateId?: string;
   senderUserId?: string;
@@ -21,7 +21,7 @@ export interface NotifyParams {
 }
 
 /**
- * Writes the in-app Notification row unconditionally (channel-agnostic —
+ * Writes the in-app Notification row unconditionally (channel-agnostic:
  * this is what makes "core workflows remain usable with no provider
  * configured" true), then fans out to whichever channels were requested.
  * Each channel dispatch is idempotent: a (tenantId, dedupeKey) pair can
@@ -82,7 +82,7 @@ export class NotificationService {
 
     const provider = this.providers.find((p) => p.channel === channel);
     if (!provider || !provider.isConfigured) {
-      // No provider configured for this channel — leave QUEUED, don't throw.
+      // No provider configured for this channel, leave QUEUED, don't throw.
       return;
     }
 

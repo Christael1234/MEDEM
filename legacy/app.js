@@ -15,7 +15,7 @@ const rolePermissions={
 const navs={proprietor:['Dashboard','Schools / Campuses','Admissions','Students','Teachers','Academics','Content Approvals','Attendance','Fees & payments','Finance','People & payroll','Messages','Library','Reports','Settings'],principal:['Dashboard','Admissions','Students','Academics','Lessons','Content Approvals','Attendance','Teachers','Timetable','Exams & Results','Fees','Finance','Payroll','Parents','Communication','Library','Reports','Settings'],bursar:['Dashboard','Admissions','Students','Fees','Invoices','Payments','Arrears','Reconciliation','Expenses','Payroll','Reports'],hr:['Dashboard','Admissions','Students','Employees','Attendance','Leave','Documents','Performance','Recruitment','Payroll','Reports'],teacher:['Dashboard','My Classes','Lessons','Attendance','Results','Timetable','Assignments','CBT Exams','Messages','My Profile'],parent:['Home','My Children','Lessons','Apply for admission','Fees','Results','Attendance','Timetable','Messages','More'],student:['Home','Classes','Lessons','Timetable','Assignments','CBT Exams','Results','Attendance','Notices','Profile'],operations:['Dashboard','Transport Routes','Vehicles & Drivers','Student Manifest','Incidents','Library','Reports'],superadmin:['Platform Dashboard','Schools','Subscriptions','Users','Support','System Health','Integrations','Audit Logs','Feature Flags','Settings'],compliance:['Dashboard','Statutory Rules','Compliance Review','Payroll Audit Trail','Reports']};
 const icons=['⌂','◉','▤','✓','₦','▥','♙','✦','◫','⚙','⌘'],slug=v=>v.toLowerCase().replace(/&/g,'and').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,''),typeFor=v=>/fee|invoice|payment|arrear|reconciliation|finance|expense|subscription|payroll/i.test(v)?'money':/student|child|class|academic|result|exam|assignment|timetable|attendance/i.test(v)?'learning':/report|dashboard|health|performance|audit|intelligence|ai/i.test(v)?'insights':/message|communication|parent|support/i.test(v)?'messages':'people';
 const configs={money:{eyebrow:'Financial operations',action:'+ Create record',stats:[['Collected this term','₦184.6m','↑ 6.8% vs last term'],['Outstanding','₦21.3m','38 families need follow-up'],['Reconciled today','₦4.8m','96% matched automatically'],['Due this week','₦12.6m','14 invoices approaching due date']],cols:['Record','Family / account','Amount','Status'],rows:[['Term fee · INV-1092','Adeyemi Family','₦285,000','Paid'],['Transport fee · INV-1148','Chukwu Family','₦180,000','Pending'],['Exam levy · INV-1173','Adebayo Family','₦45,000','Overdue']],queue:'Reconciliation queue',tasks:['17 bank transfers need a reference','3 payments need confirmation','August receipt batch is ready']},learning:{eyebrow:'Academic operations',action:'+ Add record',stats:[['Learners active','2,486','↑ 4.1% this term'],['Attendance today','94.6%','132 learners absent'],['Open tasks','12','Marks and registers awaiting action'],['Classes live','68','Across 3 campuses']],cols:['Learner / class','Context','Progress','Status'],rows:[['JSS 2A Mathematics','Mrs. Dada · 31 learners','24 / 31 marked','In progress'],['Ada Okon','SS 1A · Ikoyi campus','96% attendance','On track'],['JSS 3 English','Mr. James · 28 learners','28 / 28 marked','Complete']],queue:'Today’s teaching queue',tasks:['JSS 2 Mathematics marks are incomplete','7 guardians need an attendance update','Third-term timetable was revised']},people:{eyebrow:'People operations',action:'+ Add person',stats:[['People active','214','207 present today'],['Awaiting approval','6','Leave and document changes'],['Documents due','8','Renewals within 30 days'],['Open requests','11','Assigned to your team']],cols:['Person / request','Role or context','Last activity','Status'],rows:[['Amina Yusuf','Mathematics teacher · Ikoyi','Checked in at 07:42','Active'],['Tunde Bello','Class teacher · JSS 2A','Leave request · 2 days','Pending'],['Mrs. Nwosu','Parent / guardian','Message received today','Active']],queue:'People to review',tasks:['Two teacher leave requests need approval','8 credentials expire this month','Parent meeting confirmations are due']},messages:{eyebrow:'Communication centre',action:'+ Compose message',stats:[['Unread conversations','18','7 need a reply today'],['Delivery rate','98.7%','Across SMS, email and app'],['Scheduled','4','Next notice at 16:00'],['Contacts reached','2,106','This term']],cols:['Conversation','Audience','Last message','Status'],rows:[['Termly open day','All SS parents','Reminder sent · 09:10','Delivered'],['Transport route 3','18 guardians','Route change notice','Read'],['JSS 2A update','31 families','Homework follow-up','Pending']],queue:'Send next',tasks:['Open day reminder is scheduled for 16:00','12 parents have not read the fee notice','Draft your weekly staff update']},insights:{eyebrow:'Decision support',action:'Export report',stats:[['Reporting period','Third term','2025 / 2026 session'],['Healthy indicators','8 / 10','Two items need attention'],['Data freshness','2 min','Last data sync'],['Saved views','6','Shared with your team']],cols:['Insight / report','Scope','Last updated','Status'],rows:[['Fee collection by campus','All campuses','Today, 08:30','Ready'],['Attendance trend','JSS & SSS','Today, 07:50','Ready'],['Staff compliance','People team','Yesterday, 18:10','Review']],queue:'Signals to investigate',tasks:['Lekki transport collections are below plan','JSS 2 Mathematics needs a result review','Staff document compliance changed today']}};
-function pageMarkup(label){const c=configs[typeFor(label)],id=slug(label),initials=['AO','TB','MY'];const hideRevenue=revenueRestrictedRoles.has(activeRole)&&/finance/i.test(label);const stats=hideRevenue?c.stats.map(s=>['Collected this term','Outstanding','Reconciled today','Due this week'].includes(s[0])?[s[0],'Restricted','Ask the bursar for revenue figures']:s):c.stats;const rows=hideRevenue?c.rows.map(r=>[r[0],r[1],'Restricted',r[3]]):c.rows;return `<section class="page workspace-page" id="${id}"><div class="page-heading"><div><p class="eyebrow">${c.eyebrow}</p><h1>${label}</h1><p class="subtitle">Everything you need to manage ${label.toLowerCase()}—with the next action always visible.</p></div><button class="new-button" data-toast="${c.action.replace('+ ','')} started">${c.action}</button></div><div class="screen-tabs"><button class="active">Overview</button><button>Active</button><button>Needs attention</button><button>History</button></div><div class="screen-kpis">${stats.map((s,i)=>`<article class="screen-kpi"><p>${s[0]}</p><strong>${s[1]}</strong><small class="${i===1?'warn':''}">${s[2]}</small></article>`).join('')}</div><div class="workspace-grid-main"><section class="data-card"><div class="data-toolbar"><input aria-label="Search ${label}" placeholder="Search ${label.toLowerCase()}"><button class="filter-button">Filter ⌄</button><button class="filter-button">View: all ⌄</button></div><table class="data-table"><thead><tr>${c.cols.map(x=>`<th>${x}</th>`).join('')}<th></th></tr></thead><tbody>${rows.map((r,i)=>`<tr><td><div class="person-cell"><span class="mini-avatar">${initials[i]}</span>${r[0]}</div></td><td>${r[1]}</td><td>${r[2]}</td><td><span class="status ${r[3]==='Pending'||r[3]==='Overdue'?'pending':''}">${r[3]}</span></td><td class="row-action">→</td></tr>`).join('')}</tbody></table><div class="empty-state"><span class="mini-avatar">+</span><h3>Keep this workspace moving</h3><p>Create a record, update a status, or use the filters to find what needs your attention.</p><button class="outline-button" data-toast="New ${label} record opened">${c.action}</button></div></section><aside class="workspace-aside"><section class="side-card"><p class="eyebrow">Priority queue</p><h3>${c.queue}</h3><div class="queue-list">${c.tasks.map(x=>`<div class="queue-item"><i class="queue-dot"></i><div><strong>${x}</strong><span>Assigned to your team</span></div><b>→</b></div>`).join('')}</div></section><section class="insight-strip"><p class="eyebrow">SchoolOS signal</p><h3>One clear next step</h3><p>Focus here first to keep this part of the school running smoothly.</p><a href="#dashboard" data-view="dashboard">Open decision centre →</a></section></aside></div></section>`}
+function pageMarkup(label){const c=configs[typeFor(label)],id=slug(label),initials=['AO','TB','MY'];const hideRevenue=revenueRestrictedRoles.has(activeRole)&&/finance/i.test(label);const stats=hideRevenue?c.stats.map(s=>['Collected this term','Outstanding','Reconciled today','Due this week'].includes(s[0])?[s[0],'Restricted','Ask the bursar for revenue figures']:s):c.stats;const rows=hideRevenue?c.rows.map(r=>[r[0],r[1],'Restricted',r[3]]):c.rows;return `<section class="page workspace-page" id="${id}"><div class="page-heading"><div><p class="eyebrow">${c.eyebrow}</p><h1>${label}</h1><p class="subtitle">Everything you need to manage ${label.toLowerCase()}, with the next action always visible.</p></div><button class="new-button" data-toast="${c.action.replace('+ ','')} started">${c.action}</button></div><div class="screen-tabs"><button class="active">Overview</button><button>Active</button><button>Needs attention</button><button>History</button></div><div class="screen-kpis">${stats.map((s,i)=>`<article class="screen-kpi"><p>${s[0]}</p><strong>${s[1]}</strong><small class="${i===1?'warn':''}">${s[2]}</small></article>`).join('')}</div><div class="workspace-grid-main"><section class="data-card"><div class="data-toolbar"><input aria-label="Search ${label}" placeholder="Search ${label.toLowerCase()}"><button class="filter-button">Filter ⌄</button><button class="filter-button">View: all ⌄</button></div><table class="data-table"><thead><tr>${c.cols.map(x=>`<th>${x}</th>`).join('')}<th></th></tr></thead><tbody>${rows.map((r,i)=>`<tr><td><div class="person-cell"><span class="mini-avatar">${initials[i]}</span>${r[0]}</div></td><td>${r[1]}</td><td>${r[2]}</td><td><span class="status ${r[3]==='Pending'||r[3]==='Overdue'?'pending':''}">${r[3]}</span></td><td class="row-action">→</td></tr>`).join('')}</tbody></table><div class="empty-state"><span class="mini-avatar">+</span><h3>Keep this workspace moving</h3><p>Create a record, update a status, or use the filters to find what needs your attention.</p><button class="outline-button" data-toast="New ${label} record opened">${c.action}</button></div></section><aside class="workspace-aside"><section class="side-card"><p class="eyebrow">Priority queue</p><h3>${c.queue}</h3><div class="queue-list">${c.tasks.map(x=>`<div class="queue-item"><i class="queue-dot"></i><div><strong>${x}</strong><span>Assigned to your team</span></div><b>→</b></div>`).join('')}</div></section><section class="insight-strip"><p class="eyebrow">SchoolOS signal</p><h3>One clear next step</h3><p>Focus here first to keep this part of the school running smoothly.</p><a href="#dashboard" data-view="dashboard">Open decision centre →</a></section></aside></div></section>`}
 const initialsOf=n=>n.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
 function money(n){return '₦'+n.toString().replace(/\B(?=(\d{3})+(?!\d))/g,',')}
 
@@ -92,12 +92,12 @@ const arrearsAging=[
 function pageFeesSchool(label){
   const canEditFees=activeRole==='proprietor'||activeRole==='bursar';
   const hideRevenue=revenueRestrictedRoles.has(activeRole);
-  const kpis=hideRevenue?[['Collected this term','Restricted','Ask the bursar for revenue figures'],['Outstanding','Restricted','Ask the bursar for revenue figures'],['Discounts applied','Restricted','Ask the bursar for revenue figures'],['Overdue beyond 30 days','115 families','Across all buckets — no amounts shown']]:[['Collected this term','₦184.6m','↑ 6.8% vs last term'],['Outstanding','₦21.3m','115 families across all buckets'],['Discounts applied','₦18.4m','91 families this term'],['Overdue beyond 30 days','₦15.1m','67 families need follow-up']];
+  const kpis=hideRevenue?[['Collected this term','Restricted','Ask the bursar for revenue figures'],['Outstanding','Restricted','Ask the bursar for revenue figures'],['Discounts applied','Restricted','Ask the bursar for revenue figures'],['Overdue beyond 30 days','115 families','Across all buckets, no amounts shown']]:[['Collected this term','₦184.6m','↑ 6.8% vs last term'],['Outstanding','₦21.3m','115 families across all buckets'],['Discounts applied','₦18.4m','91 families this term'],['Overdue beyond 30 days','₦15.1m','67 families need follow-up']];
   const structureRows=feeStructure.map(f=>`<tr><td>${f.cls}</td><td>${money(f.tuition)}</td><td>${money(f.transport)}</td><td>${f.boarding?money(f.boarding):'—'}</td><td>${money(f.exam)}</td><td><strong>${money(f.tuition+f.transport+f.boarding+f.exam)}</strong></td></tr>`).join('');
   const installmentRows=feeInstallments.map(i=>`<tr><td><div class="person-cell"><span class="mini-avatar">${initialsOf(i.student)}</span>${i.student}</div></td><td>${i.family}</td><td>${i.amount}</td><td>${i.due}</td><td><span class="status ${i.status!=='Paid'?'pending':''}">${i.status}</span></td></tr>`).join('');
   const discountRows=feeDiscounts.map(d=>`<tr><td>${d.name}</td><td>${d.rule}</td><td>${d.value}</td><td>${d.applied}</td></tr>`).join('');
   const agingRows=arrearsAging.map(a=>`<div class="aging-row"><span class="aging-label">${a.label}</span><div class="aging-bar"><span style="width:${a.pct}%"></span></div><span class="aging-amount">${a.amount}</span><span class="aging-count">${a.count}</span></div>`).join('');
-  return `<section class="page workspace-page" id="${slug(label)}"><div class="page-heading"><div><p class="eyebrow">Fees & billing</p><h1>${label}</h1><p class="subtitle">Fee structures, instalments, discounts and arrears — in one place.</p></div>${canEditFees?'<button class="new-button" data-modal="new-fee-structure">+ New fee structure</button>':'<span class="view-only-badge">View only</span>'}</div><div class="screen-kpis">${kpis.map(s=>`<article class="screen-kpi"><p>${s[0]}</p><strong>${s[1]}</strong><small>${s[2]}</small></article>`).join('')}</div><div class="screen-tabs" data-tabs><button class="active" data-tab="structure">Fee structure</button><button data-tab="installments">Instalments</button><button data-tab="discounts">Discounts & waivers</button><button data-tab="arrears">Arrears ageing</button></div><div data-tab-panel="structure" class="tab-panel visible"><section class="data-card"><table class="data-table"><thead><tr><th>Class</th><th>Tuition</th><th>Transport</th><th>Boarding</th><th>Exam levy</th><th>Total per term</th></tr></thead><tbody>${structureRows}</tbody></table></section></div><div data-tab-panel="installments" class="tab-panel"><section class="data-card"><table class="data-table"><thead><tr><th>Student</th><th>Family</th><th>Amount</th><th>Due date</th><th>Status</th></tr></thead><tbody>${installmentRows}</tbody></table></section></div><div data-tab-panel="discounts" class="tab-panel"><section class="data-card"><table class="data-table"><thead><tr><th>Discount / scholarship</th><th>Rule</th><th>Value</th><th>Applied to</th></tr></thead><tbody>${discountRows}</tbody></table></section></div><div data-tab-panel="arrears" class="tab-panel"><section class="data-card aging-card">${agingRows}</section></div></section>`;
+  return `<section class="page workspace-page" id="${slug(label)}"><div class="page-heading"><div><p class="eyebrow">Fees & billing</p><h1>${label}</h1><p class="subtitle">Fee structures, instalments, discounts and arrears, in one place.</p></div>${canEditFees?'<button class="new-button" data-modal="new-fee-structure">+ New fee structure</button>':'<span class="view-only-badge">View only</span>'}</div><div class="screen-kpis">${kpis.map(s=>`<article class="screen-kpi"><p>${s[0]}</p><strong>${s[1]}</strong><small>${s[2]}</small></article>`).join('')}</div><div class="screen-tabs" data-tabs><button class="active" data-tab="structure">Fee structure</button><button data-tab="installments">Instalments</button><button data-tab="discounts">Discounts & waivers</button><button data-tab="arrears">Arrears ageing</button></div><div data-tab-panel="structure" class="tab-panel visible"><section class="data-card"><table class="data-table"><thead><tr><th>Class</th><th>Tuition</th><th>Transport</th><th>Boarding</th><th>Exam levy</th><th>Total per term</th></tr></thead><tbody>${structureRows}</tbody></table></section></div><div data-tab-panel="installments" class="tab-panel"><section class="data-card"><table class="data-table"><thead><tr><th>Student</th><th>Family</th><th>Amount</th><th>Due date</th><th>Status</th></tr></thead><tbody>${installmentRows}</tbody></table></section></div><div data-tab-panel="discounts" class="tab-panel"><section class="data-card"><table class="data-table"><thead><tr><th>Discount / scholarship</th><th>Rule</th><th>Value</th><th>Applied to</th></tr></thead><tbody>${discountRows}</tbody></table></section></div><div data-tab-panel="arrears" class="tab-panel"><section class="data-card aging-card">${agingRows}</section></div></section>`;
 }
 
 const parentInvoices={
@@ -198,15 +198,15 @@ function pageAcademics(label){
   const canManageClasses=(()=>{const u=window.SchoolOSApi&&window.SchoolOSApi.getUser();return u&&(u.role==='PROPRIETOR'||u.role==='PRINCIPAL')})();
   const addClassButton=canManageClasses?'<button class="new-button" data-modal="new-class">+ Add class</button>':'';
   const addSubjectButton=canManageClasses?'<button class="new-button" data-modal="new-subject">+ Add subject</button>':'';
-  return `<section class="page workspace-page" id="academics"><div class="page-heading"><div><p class="eyebrow">Academic management</p><h1>${label}</h1><p class="subtitle">Timetable, marks entry and result approval for every class.</p></div><button class="new-button" data-goto-tab="marks">+ Enter marks</button></div><div class="screen-kpis">${kpis.map((s,i)=>`<article class="screen-kpi"><p>${s[0]}</p><strong${s[3]?` id="${s[3]}"`:''}>${s[1]}</strong><small class="${i===1||i===2?'warn':''}">${s[2]}</small></article>`).join('')}</div><div class="screen-tabs" data-tabs><button class="active" data-tab="timetable">Timetable</button><button data-tab="marks">Marks entry</button><button data-tab="results">Result approval</button><button data-tab="scale">Grading scale</button><button data-tab="classes">Classes</button><button data-tab="subjects">Subjects</button></div><div data-tab-panel="timetable" class="tab-panel visible"><section class="data-card"><div class="data-toolbar"><span class="tt-class-label">${currentTimetableClass} · Third term</span><select id="timetableClassSelect" aria-label="Select class timetable">${Object.keys(classTimetables).map(c=>`<option ${c===currentTimetableClass?'selected':''}>${c}</option>`).join('')}</select><button class="new-button" data-modal="new-timetable">+ New class timetable</button></div><p class="tt-hint">Click any period to edit it.</p><table class="data-table timetable-grid"><thead><tr><th></th>${timetableDays.map(d=>`<th>${d}</th>`).join('')}</tr></thead><tbody>${ttRows}</tbody></table></section></div><div data-tab-panel="marks" class="tab-panel"><section class="data-card"><div class="data-toolbar"><span class="tt-class-label">Live from the API — drafts not yet submitted</span></div><table class="data-table"><thead><tr><th>Student</th><th>Subject</th><th>Term</th><th>CA</th><th>Exam</th><th>Total</th></tr></thead><tbody id="realMarksEntryBody"><tr><td colspan="6">Sign in to load marks…</td></tr></tbody></table></section></div><div data-tab-panel="results" class="tab-panel"><section class="data-card"><table class="data-table"><thead><tr><th>Student</th><th>Subject</th><th>Term</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody id="realResultApprovalsBody"><tr><td colspan="6">Sign in to load results…</td></tr></tbody></table></section></div><div data-tab-panel="scale" class="tab-panel"><section class="data-card"><table class="data-table"><thead><tr><th>Grade</th><th>Range</th><th>Meaning</th><th></th></tr></thead><tbody>${gradingScale.map(g=>`<tr><td><strong>${g[0]}</strong></td><td>${g[1]}</td><td>${g[2]}</td><td class="row-action"><button class="outline-button" data-edit-grade="${g[0]}">Edit</button></td></tr>`).join('')}</tbody></table></section></div><div data-tab-panel="classes" class="tab-panel"><section class="data-card"><div class="data-toolbar"><span class="tt-class-label">Live from the API</span>${addClassButton}</div><table class="data-table"><thead><tr><th>Class</th><th>Campus</th><th>Arms</th><th></th></tr></thead><tbody id="realClassesBody"><tr><td colspan="4">Sign in to load classes…</td></tr></tbody></table></section></div><div data-tab-panel="subjects" class="tab-panel"><section class="data-card"><div class="data-toolbar"><span class="tt-class-label">Live from the API</span>${addSubjectButton}</div><table class="data-table"><thead><tr><th>Subject</th><th>Code</th></tr></thead><tbody id="realSubjectsBody"><tr><td colspan="2">Sign in to load subjects…</td></tr></tbody></table></section></div></section>`;
+  return `<section class="page workspace-page" id="academics"><div class="page-heading"><div><p class="eyebrow">Academic management</p><h1>${label}</h1><p class="subtitle">Timetable, marks entry and result approval for every class.</p></div><button class="new-button" data-goto-tab="marks">+ Enter marks</button></div><div class="screen-kpis">${kpis.map((s,i)=>`<article class="screen-kpi"><p>${s[0]}</p><strong${s[3]?` id="${s[3]}"`:''}>${s[1]}</strong><small class="${i===1||i===2?'warn':''}">${s[2]}</small></article>`).join('')}</div><div class="screen-tabs" data-tabs><button class="active" data-tab="timetable">Timetable</button><button data-tab="marks">Marks entry</button><button data-tab="results">Result approval</button><button data-tab="scale">Grading scale</button><button data-tab="classes">Classes</button><button data-tab="subjects">Subjects</button></div><div data-tab-panel="timetable" class="tab-panel visible"><section class="data-card"><div class="data-toolbar"><span class="tt-class-label">${currentTimetableClass} · Third term</span><select id="timetableClassSelect" aria-label="Select class timetable">${Object.keys(classTimetables).map(c=>`<option ${c===currentTimetableClass?'selected':''}>${c}</option>`).join('')}</select><button class="new-button" data-modal="new-timetable">+ New class timetable</button></div><p class="tt-hint">Click any period to edit it.</p><table class="data-table timetable-grid"><thead><tr><th></th>${timetableDays.map(d=>`<th>${d}</th>`).join('')}</tr></thead><tbody>${ttRows}</tbody></table></section></div><div data-tab-panel="marks" class="tab-panel"><section class="data-card"><div class="data-toolbar"><span class="tt-class-label">Live from the API, drafts not yet submitted</span></div><table class="data-table"><thead><tr><th>Student</th><th>Subject</th><th>Term</th><th>CA</th><th>Exam</th><th>Total</th></tr></thead><tbody id="realMarksEntryBody"><tr><td colspan="6">Sign in to load marks…</td></tr></tbody></table></section></div><div data-tab-panel="results" class="tab-panel"><section class="data-card"><table class="data-table"><thead><tr><th>Student</th><th>Subject</th><th>Term</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody id="realResultApprovalsBody"><tr><td colspan="6">Sign in to load results…</td></tr></tbody></table></section></div><div data-tab-panel="scale" class="tab-panel"><section class="data-card"><table class="data-table"><thead><tr><th>Grade</th><th>Range</th><th>Meaning</th><th></th></tr></thead><tbody>${gradingScale.map(g=>`<tr><td><strong>${g[0]}</strong></td><td>${g[1]}</td><td>${g[2]}</td><td class="row-action"><button class="outline-button" data-edit-grade="${g[0]}">Edit</button></td></tr>`).join('')}</tbody></table></section></div><div data-tab-panel="classes" class="tab-panel"><section class="data-card"><div class="data-toolbar"><span class="tt-class-label">Live from the API</span>${addClassButton}</div><table class="data-table"><thead><tr><th>Class</th><th>Campus</th><th>Arms</th><th></th></tr></thead><tbody id="realClassesBody"><tr><td colspan="4">Sign in to load classes…</td></tr></tbody></table></section></div><div data-tab-panel="subjects" class="tab-panel"><section class="data-card"><div class="data-toolbar"><span class="tt-class-label">Live from the API</span>${addSubjectButton}</div><table class="data-table"><thead><tr><th>Subject</th><th>Code</th></tr></thead><tbody id="realSubjectsBody"><tr><td colspan="2">Sign in to load subjects…</td></tr></tbody></table></section></div></section>`;
 }
 
 /** teacherClassMap backs the *unrelated* teacher-persona mock pages (a
- * teacher previewing their own attendance/marks screens) — kept as-is;
+ * teacher previewing their own attendance/marks screens), kept as-is;
  * only the admin-facing "Teachers" list below was replaced with real API
  * data. */
 const teacherClassMap={'Tunde Bello':{cls:'JSS 2A',subject:'Mathematics'}};
-/** Real data from the SchoolOS API — see pageStudentsReal's doc comment.
+/** Real data from the SchoolOS API; see pageStudentsReal's doc comment.
  * Renders a loading skeleton synchronously; loadRealTeachers() fills it
  * in once the API responds. */
 function pageTeachersReal(label){
@@ -216,13 +216,13 @@ function pageTeachersReal(label){
   return `<section class="page workspace-page" id="${slug(label)}"><div class="page-heading"><div><p class="eyebrow">Live from the API</p><h1>${label}</h1><p class="subtitle">Real teaching staff for the signed-in tenant.</p></div>${addButton}</div><section class="data-card"><table class="data-table"><thead><tr><th>Teacher</th><th>Staff ID</th><th>Department</th><th>Login email</th><th></th></tr></thead><tbody id="realTeachersBody"><tr><td colspan="5">Sign in to load teachers…</td></tr></tbody></table></section></section>`;
 }
 /** Opens the real "Add teacher" form. Beyond the basic account, this lets
- * the admin pick one subject and any number of classes right away — one
+ * the admin pick one subject and any number of classes right away: one
  * teacher can be the Mathematics teacher for several classes at once, so
  * "classes" is a checkbox group, not a single select. Each selected class
  * becomes its own POST /teacher-subject-assignments call after the
  * teacher account is created (that endpoint already tenant-validates
  * staffProfileId/schoolClassId/subjectId, so no new backend work needed
- * here — this just calls it once per class). */
+ * here; this just calls it once per class). */
 async function openNewTeacherModal(){
   if(!window.SchoolOSApi||!window.SchoolOSApi.getAccessToken()){toast('Sign in to add a teacher');return}
   let campuses=[],classes=[],subjects=[];
@@ -240,7 +240,7 @@ async function openNewTeacherModal(){
   formModal({
     eyebrow:'Teachers',
     title:'Add teacher',
-    sub:'Creates a real teacher account via the SchoolOS API — POST /staff-profiles/teachers. Optionally assign them as the subject teacher for one or more classes right away.',
+    sub:'Creates a real teacher account via the SchoolOS API: POST /staff-profiles/teachers. Optionally assign them as the subject teacher for one or more classes right away.',
     fields:[
       {name:'firstName',label:'First name',placeholder:'e.g. Amina'},
       {name:'lastName',label:'Last name',placeholder:'e.g. Yusuf'},
@@ -278,7 +278,7 @@ async function openNewTeacherModal(){
           detailModal({
             eyebrow:'Teachers',
             title:'Login created',
-            sub:`A teacher portal login was generated automatically for ${payload.firstName} ${payload.lastName}. Share these with them directly — they won't be shown again.`,
+            sub:`A teacher portal login was generated automatically for ${payload.firstName} ${payload.lastName}. Share these with them directly; they won't be shown again.`,
             rows:[['Email',created.loginCredentials.email],['Password',created.loginCredentials.password]],
           });
         }
@@ -302,7 +302,7 @@ async function loadRealTeachers(){
 }
 window.loadRealTeachers=loadRealTeachers;
 
-/** "View teacher" — shows the real profile (GET /staff-profiles/:id) with
+/** "View teacher": shows the real profile (GET /staff-profiles/:id) with
  * inline-editable name/department/position for Proprietor/Principal, plus
  * read-only sections for the classes they lead and the subjects they
  * teach. Editing re-opens this same modal with fresh data rather than
@@ -364,7 +364,7 @@ async function loadRealClasses(){
 }
 window.loadRealClasses=loadRealClasses;
 
-/** "View class" — shows the real class (GET /classes/:id) with an
+/** "View class": shows the real class (GET /classes/:id) with an
  * inline-editable class name, each arm inline-editable with its own Save
  * (a class can have several arms, each renamed independently), a
  * "+ Add arm" affordance, and a read-only list of subject teachers
@@ -417,7 +417,7 @@ async function openClassDetailModal(classId){
     <div class="detail-section"><p class="eyebrow">Subject teachers</p>${subjectsHtml}</div>
     <div class="form-actions"><button class="outline-button" data-modal-close>Close</button></div>`);
 }
-/** Opens the real "Add class" form — POST /classes. */
+/** Opens the real "Add class" form: POST /classes. */
 async function openNewClassModal(){
   if(!window.SchoolOSApi||!window.SchoolOSApi.getAccessToken()){toast('Sign in to add a class');return}
   let campuses=[];
@@ -430,7 +430,7 @@ async function openNewClassModal(){
   formModal({
     eyebrow:'Academics',
     title:'Add class',
-    sub:'Creates a real class via the SchoolOS API — POST /classes.',
+    sub:'Creates a real class via the SchoolOS API: POST /classes.',
     fields:[
       {name:'name',label:'Class name',placeholder:'e.g. JSS 3'},
       {name:'campus',label:'Campus',type:'select',options:campuses.map(c=>c.name)},
@@ -449,7 +449,7 @@ async function openNewClassModal(){
     },
   });
 }
-/** Opens the real "Add arm" form for a given SchoolClass — POST
+/** Opens the real "Add arm" form for a given SchoolClass: POST
  * /class-arms. Offers real teachers as the optional class-teacher
  * picker. */
 async function openNewClassArmModal(schoolClassId){
@@ -465,7 +465,7 @@ async function openNewClassArmModal(schoolClassId){
   formModal({
     eyebrow:'Academics',
     title:'Add class arm',
-    sub:'Creates a real class arm (section) via the SchoolOS API — POST /class-arms.',
+    sub:'Creates a real class arm (section) via the SchoolOS API: POST /class-arms.',
     fields:[
       {name:'name',label:'Arm name',placeholder:'e.g. Gold'},
       {name:'teacher',label:'Class teacher',type:'select',options:['Unassigned',...teachers.map(teacherLabel)]},
@@ -500,13 +500,13 @@ async function loadRealSubjects(){
   }
 }
 window.loadRealSubjects=loadRealSubjects;
-/** Opens the real "Add subject" form — POST /subjects. */
+/** Opens the real "Add subject" form: POST /subjects. */
 async function openNewSubjectModal(){
   if(!window.SchoolOSApi||!window.SchoolOSApi.getAccessToken()){toast('Sign in to add a subject');return}
   formModal({
     eyebrow:'Academics',
     title:'Add subject',
-    sub:'Creates a real subject via the SchoolOS API — POST /subjects.',
+    sub:'Creates a real subject via the SchoolOS API: POST /subjects.',
     fields:[
       {name:'name',label:'Subject name',placeholder:'e.g. Further Mathematics'},
       {name:'code',label:'Code (optional)',placeholder:'e.g. FMTH'},
@@ -526,7 +526,7 @@ async function openNewSubjectModal(){
   });
 }
 /** One GET /results fetch feeding three spots on the Academics page: the
- * "Marks entry" tab (DRAFT rows — not yet submitted by the teacher who
+ * "Marks entry" tab (DRAFT rows, not yet submitted by the teacher who
  * entered them), the "Result approval" tab (SUBMITTED/APPROVED/PUBLISHED,
  * with real Approve/Publish actions), and the two live KPI numbers at the
  * top of the page. Proprietor/Principal see every result tenant-wide
@@ -594,7 +594,7 @@ async function publishRealResult(id){
     toast(`Could not publish (${err.message})`);
   }
 }
-/** Real data from the SchoolOS API — every other page in this file is
+/** Real data from the SchoolOS API; every other page in this file is
  * mock (fees/finance/payroll/HR aren't built on the backend yet). Renders
  * a loading skeleton synchronously; loadRealStudents() fills it in once
  * the API responds (called from changeRole() and after login). */
@@ -611,7 +611,7 @@ function pageStudentProfileReal(label){
   return `<section class="page workspace-page" id="${slug(label)}"><div class="page-heading"><div><p class="eyebrow">Live from the API</p><h1>${label}</h1><p class="subtitle">Your real student record.</p></div></div><section class="data-card" id="realStudentProfileCard"><p>Sign in as a student to load your profile…</p></section></section>`;
 }
 /** Opens the real "Add student" form via the app's existing formModal()
- * plumbing — fetches campuses/classes first since formModal builds its
+ * plumbing: fetches campuses/classes first since formModal builds its
  * HTML synchronously, then POSTs to the real API on submit. */
 async function openNewStudentModal(){
   if(!window.SchoolOSApi||!window.SchoolOSApi.getAccessToken()){toast('Sign in to add a student');return}
@@ -628,7 +628,7 @@ async function openNewStudentModal(){
   formModal({
     eyebrow:'Students',
     title:'Add student',
-    sub:'Creates a real student record via the SchoolOS API — POST /students.',
+    sub:'Creates a real student record via the SchoolOS API: POST /students.',
     fields:[
       {name:'firstName',label:'First name',placeholder:'e.g. Ada'},
       {name:'lastName',label:'Last name',placeholder:'e.g. Okafor'},
@@ -656,7 +656,7 @@ async function openNewStudentModal(){
           detailModal({
             eyebrow:'Students',
             title:'Login created',
-            sub:`A student portal login was generated automatically for ${payload.firstName} ${payload.lastName}. Share these with them directly — they won't be shown again.`,
+            sub:`A student portal login was generated automatically for ${payload.firstName} ${payload.lastName}. Share these with them directly; they won't be shown again.`,
             rows:[['Email',created.loginCredentials.email],['Password',created.loginCredentials.password]],
           });
         }
@@ -679,7 +679,7 @@ async function loadRealStudents(){
 }
 window.loadRealStudents=loadRealStudents;
 
-/** "View student" — shows the real record (GET /students/:id) with
+/** "View student": shows the real record (GET /students/:id) with
  * inline-editable name for Proprietor/Principal, plus read-only admission
  * details, current class and linked guardians. */
 async function openStudentDetailModal(studentId){
@@ -721,8 +721,8 @@ async function openStudentDetailModal(studentId){
 
 /** Fills the real-data tables on the student persona's Results/Attendance/
  * Assignments pages. Only fetches when the *actual* logged-in account is
- * a real STUDENT (the backend's /portal/student/* routes are STUDENT-only
- * — previewing "student" via the role dropdown as e.g. Proprietor, or the
+ * a real STUDENT (the backend's /portal/student/* routes are STUDENT-only;
+ * previewing "student" via the role dropdown as e.g. Proprietor, or the
  * no-auth "Continue as Student" shortcut, correctly shows a placeholder
  * instead of a 403). */
 async function loadRealStudentPortalData(){
@@ -772,7 +772,7 @@ async function loadRealStudentPortalData(){
       profileCard.innerHTML=`<div class="modal-detail"><div class="modal-detail-row"><span>Name</span><strong>${p.firstName} ${p.lastName}</strong></div><div class="modal-detail-row"><span>Admission No.</span><strong>${p.admissionNo}</strong></div><div class="modal-detail-row"><span>Class</span><strong>${cls}</strong></div><div class="modal-detail-row"><span>Status</span><strong>${p.status}</strong></div><div class="modal-detail-row"><span>Gender</span><strong>${p.gender||'—'}</strong></div><div class="modal-detail-row"><span>Date of birth</span><strong>${p.dateOfBirth?new Date(p.dateOfBirth).toDateString():'—'}</strong></div><div class="modal-detail-row"><span>Guardian(s)</span><strong>${guardians}</strong></div></div>`;
       // The Home page greeting should reflect the actual linked Student
       // record (whichever one is currently "active"), not the login
-      // account's own name — those can differ, and the student record is
+      // account's own name; those can differ, and the student record is
       // the source of truth for "who this student is".
       const greeting=document.getElementById('greeting');
       if(greeting)greeting.textContent=`Good morning, ${p.firstName}.`;
@@ -804,7 +804,7 @@ async function loadRealStudentPortalData(){
   }
 }
 window.loadRealStudentPortalData=loadRealStudentPortalData;
-/** Real "Take attendance" — roster from /students?classArmId=, submitted
+/** Real "Take attendance": roster from /students?classArmId=, submitted
  * in one call via POST /attendance/bulk (the backend's own bulk endpoint,
  * built exactly for this "whole class at once" workflow). */
 async function openTakeRealAttendanceModal(classArmId){
@@ -906,11 +906,11 @@ async function loadRealAttendanceOverview(){
 window.loadRealAttendanceOverview=loadRealAttendanceOverview;
 function pageAttendanceSelf(label){
   if(activeRole==='student'){
-    return `<section class="page workspace-page" id="attendance"><div class="page-heading"><div><p class="eyebrow">Attendance</p><h1>${label}</h1><p class="subtitle">Live from the API — your attendance history.</p></div></div><section class="data-card"><table class="data-table"><thead><tr><th>Date</th><th>Class</th><th>Status</th></tr></thead><tbody id="realStudentAttendanceBody"><tr><td colspan="3">Sign in as a student to load attendance…</td></tr></tbody></table></section></section>`;
+    return `<section class="page workspace-page" id="attendance"><div class="page-heading"><div><p class="eyebrow">Attendance</p><h1>${label}</h1><p class="subtitle">Live from the API, your attendance history.</p></div></div><section class="data-card"><table class="data-table"><thead><tr><th>Date</th><th>Class</th><th>Status</th></tr></thead><tbody id="realStudentAttendanceBody"><tr><td colspan="3">Sign in as a student to load attendance…</td></tr></tbody></table></section></section>`;
   }
   return `<section class="page workspace-page" id="attendance"><div class="page-heading"><div><p class="eyebrow">Live from the API</p><h1>${label}</h1><p class="subtitle">Attendance history for your children.</p></div></div><div id="realParentAttendanceBlocks"><p class="modal-sub">Sign in as a parent to load attendance…</p></div></section>`;
 }
-/** Same pattern as loadRealParentResults — real children, one attendance
+/** Same pattern as loadRealParentResults; real children, one attendance
  * call per child via /portal/parent/children/:id/attendance. */
 async function loadRealParentAttendance(){
   const container=document.getElementById('realParentAttendanceBlocks');
@@ -1008,7 +1008,7 @@ function pagePayroll(label){
   const rows=payrollRows.map(r=>`<tr class="${r.status==='Flagged'?'row-flagged':''}"><td><div class="person-cell"><span class="mini-avatar">${initialsOf(r.name)}</span><div><strong>${r.name}</strong><br><small>${r.role}</small></div></div></td><td>${r.gross}</td><td>${r.paye}</td><td>${r.pension}</td><td>${r.nhf}</td><td><strong>${r.net}</strong></td><td><span class="status ${r.status==='Flagged'?'pending':''}">${r.status}</span></td></tr>`).join('');
   const structureRows=salaryGrades.map(g=>`<tr><td><strong>${g.grade}</strong></td><td>${g.basic}</td><td>${g.housing}</td><td>${g.transport}</td><td>${g.other}</td><td><strong>${g.gross}</strong></td><td class="row-action">${canEditStructures?`<button class="outline-button" data-edit-salary-grade="${g.grade}">Edit</button>`:''}</td></tr>`).join('');
   const advanceRows=payrollAdvances.map(a=>`<tr><td><div class="person-cell"><span class="mini-avatar">${initialsOf(a.name)}</span>${a.name}</div></td><td>${a.type}</td><td>${a.amount}</td><td>${a.monthly}</td><td>${a.balance}</td><td><span class="status ${a.status!=='Completed'?'pending':''}">${a.status}</span></td></tr>`).join('');
-  return `<section class="page workspace-page" id="${slug(label)}"><div class="page-heading"><div><p class="eyebrow">Payroll</p><h1>${label}</h1><p class="subtitle">${payrollRun.period} payroll run — draft through to finalization.</p></div><div class="payroll-actions">${payrollActions}</div></div><div class="payroll-stepper">${stepper}</div><div class="screen-tabs" data-tabs><button class="active" data-tab="run">Payroll run</button><button data-tab="structures">Salary structures</button><button data-tab="advances">Advances & loans</button></div><div data-tab-panel="run" class="tab-panel visible"><div class="screen-kpis">${kpis.map(s=>`<article class="screen-kpi"><p>${s[0]}</p><strong>${s[1]}</strong><small>${s[2]}</small></article>`).join('')}</div><div class="workspace-grid-main"><section class="data-card"><div class="data-toolbar"><input aria-label="Search staff" placeholder="Search staff on this run"><button class="filter-button">Status: all ⌄</button></div><table class="data-table"><thead><tr><th>Employee</th><th>Gross</th><th>PAYE</th><th>Pension</th><th>NHF</th><th>Net pay</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></section><aside class="workspace-aside"><section class="side-card"><p class="eyebrow">Payslip preview</p><h3>Miriam Danladi</h3><div class="payslip-lines"><div><span>Gross salary</span><b>₦360,000</b></div><div><span>PAYE</span><b>-₦29,400</b></div><div><span>Pension (8%)</span><b>-₦28,800</b></div><div><span>NHF (2.5%)</span><b>-₦9,000</b></div><div class="payslip-total"><span>Net pay</span><b>₦292,800</b></div></div><button class="outline-button" data-resolve-flag="Miriam Danladi">Resolve flag</button></section><section class="insight-strip"><p class="eyebrow">SchoolOS signal</p><h3>Ready to finalize</h3><p>213 of 214 payslips are ready. Resolve the flagged entry, then export the bank payment file.</p><a href="#" data-toast="Bank payment file exported">Export bank file →</a></section></aside></div></div><div data-tab-panel="structures" class="tab-panel"><section class="data-card"><table class="data-table"><thead><tr><th>Grade</th><th>Basic</th><th>Housing</th><th>Transport</th><th>Other allowances</th><th>Gross monthly</th><th></th></tr></thead><tbody>${structureRows}</tbody></table></section></div><div data-tab-panel="advances" class="tab-panel"><section class="data-card"><table class="data-table"><thead><tr><th>Employee</th><th>Type</th><th>Amount</th><th>Monthly deduction</th><th>Balance</th><th>Status</th></tr></thead><tbody>${advanceRows}</tbody></table></section></div></section>`;
+  return `<section class="page workspace-page" id="${slug(label)}"><div class="page-heading"><div><p class="eyebrow">Payroll</p><h1>${label}</h1><p class="subtitle">${payrollRun.period} payroll run, draft through to finalization.</p></div><div class="payroll-actions">${payrollActions}</div></div><div class="payroll-stepper">${stepper}</div><div class="screen-tabs" data-tabs><button class="active" data-tab="run">Payroll run</button><button data-tab="structures">Salary structures</button><button data-tab="advances">Advances & loans</button></div><div data-tab-panel="run" class="tab-panel visible"><div class="screen-kpis">${kpis.map(s=>`<article class="screen-kpi"><p>${s[0]}</p><strong>${s[1]}</strong><small>${s[2]}</small></article>`).join('')}</div><div class="workspace-grid-main"><section class="data-card"><div class="data-toolbar"><input aria-label="Search staff" placeholder="Search staff on this run"><button class="filter-button">Status: all ⌄</button></div><table class="data-table"><thead><tr><th>Employee</th><th>Gross</th><th>PAYE</th><th>Pension</th><th>NHF</th><th>Net pay</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table></section><aside class="workspace-aside"><section class="side-card"><p class="eyebrow">Payslip preview</p><h3>Miriam Danladi</h3><div class="payslip-lines"><div><span>Gross salary</span><b>₦360,000</b></div><div><span>PAYE</span><b>-₦29,400</b></div><div><span>Pension (8%)</span><b>-₦28,800</b></div><div><span>NHF (2.5%)</span><b>-₦9,000</b></div><div class="payslip-total"><span>Net pay</span><b>₦292,800</b></div></div><button class="outline-button" data-resolve-flag="Miriam Danladi">Resolve flag</button></section><section class="insight-strip"><p class="eyebrow">SchoolOS signal</p><h3>Ready to finalize</h3><p>213 of 214 payslips are ready. Resolve the flagged entry, then export the bank payment file.</p><a href="#" data-toast="Bank payment file exported">Export bank file →</a></section></aside></div></div><div data-tab-panel="structures" class="tab-panel"><section class="data-card"><table class="data-table"><thead><tr><th>Grade</th><th>Basic</th><th>Housing</th><th>Transport</th><th>Other allowances</th><th>Gross monthly</th><th></th></tr></thead><tbody>${structureRows}</tbody></table></section></div><div data-tab-panel="advances" class="tab-panel"><section class="data-card"><table class="data-table"><thead><tr><th>Employee</th><th>Type</th><th>Amount</th><th>Monthly deduction</th><th>Balance</th><th>Status</th></tr></thead><tbody>${advanceRows}</tbody></table></section></div></section>`;
 }
 
 const studentAssignments=[
@@ -1016,13 +1016,13 @@ const studentAssignments=[
   {subject:'English',title:'Essay: My holiday',due:'26 Aug',status:'Submitted'},
   {subject:'Basic Science',title:'Photosynthesis lab report',due:'22 Aug',status:'Graded',score:'17/20'},
   {subject:'Civic Education',title:'Rights & responsibilities quiz',due:'20 Aug',status:'Graded',score:'9/10'},
-  {subject:'French',title:'Vocabulary list — Unit 4',due:'18 Aug',status:'Overdue'}
+  {subject:'French',title:'Vocabulary list: Unit 4',due:'18 Aug',status:'Overdue'}
 ];
 function pageAssignmentsStudent(label){
-  return `<section class="page workspace-page" id="assignments"><div class="page-heading"><div><p class="eyebrow">My work</p><h1>${label}</h1><p class="subtitle">Live from the API — everything posted for your class.</p></div></div><section class="data-card"><table class="data-table"><thead><tr><th>Assignment</th><th>Description</th><th>Due date</th></tr></thead><tbody id="realStudentAssignmentsBody"><tr><td colspan="3">Sign in as a student to load assignments…</td></tr></tbody></table></section></section>`;
+  return `<section class="page workspace-page" id="assignments"><div class="page-heading"><div><p class="eyebrow">My work</p><h1>${label}</h1><p class="subtitle">Live from the API, everything posted for your class.</p></div></div><section class="data-card"><table class="data-table"><thead><tr><th>Assignment</th><th>Description</th><th>Due date</th></tr></thead><tbody id="realStudentAssignmentsBody"><tr><td colspan="3">Sign in as a student to load assignments…</td></tr></tbody></table></section></section>`;
 }
 function pageAssignmentsTeacher(label){
-  return `<section class="page workspace-page" id="assignments"><div class="page-heading"><div><p class="eyebrow">Live from the API</p><h1>${label}</h1><p class="subtitle">Real assignments across the classes you teach.</p></div><button class="new-button" data-modal="new-assignment-real">+ New assignment</button></div><section class="data-card"><table class="data-table"><thead><tr><th>Assignment</th><th>Class</th><th>Subject</th><th>Due date</th></tr></thead><tbody id="realTeacherAssignmentsBody"><tr><td colspan="4">Sign in as a teacher to load assignments…</td></tr></tbody></table></section><p class="modal-sub" style="margin-top:14px">Submission tracking and an approval workflow aren't built on the backend yet — this is every real assignment you've posted, nothing more.</p></section>`;
+  return `<section class="page workspace-page" id="assignments"><div class="page-heading"><div><p class="eyebrow">Live from the API</p><h1>${label}</h1><p class="subtitle">Real assignments across the classes you teach.</p></div><button class="new-button" data-modal="new-assignment-real">+ New assignment</button></div><section class="data-card"><table class="data-table"><thead><tr><th>Assignment</th><th>Class</th><th>Subject</th><th>Due date</th></tr></thead><tbody id="realTeacherAssignmentsBody"><tr><td colspan="4">Sign in as a teacher to load assignments…</td></tr></tbody></table></section><p class="modal-sub" style="margin-top:14px">Submission tracking and an approval workflow aren't built on the backend yet: this is every real assignment you've posted, nothing more.</p></section>`;
 }
 async function loadRealTeacherAssignments(){
   const tbody=document.getElementById('realTeacherAssignmentsBody');
@@ -1042,10 +1042,10 @@ window.loadRealTeacherAssignments=loadRealTeacherAssignments;
 function pageAssignments(label){return activeRole==='teacher'?pageAssignmentsTeacher(label):pageAssignmentsStudent(label)}
 
 const cbtExams=[
-  {id:'math-cbt',subject:'Mathematics',title:'Third term CBT — Algebra & Geometry',duration:'3 min',questions:5,status:'Not started'},
-  {subject:'English',title:'Third term CBT — Comprehension',duration:'40 min',questions:25,status:'Not started'},
-  {subject:'Basic Science',title:'Third term CBT — Living things',duration:'30 min',questions:20,status:'Completed',score:'16/20'},
-  {subject:'Social Studies',title:'Third term CBT — Government',duration:'30 min',questions:20,status:'In progress'}
+  {id:'math-cbt',subject:'Mathematics',title:'Third term CBT: Algebra & Geometry',duration:'3 min',questions:5,status:'Not started'},
+  {subject:'English',title:'Third term CBT: Comprehension',duration:'40 min',questions:25,status:'Not started'},
+  {subject:'Basic Science',title:'Third term CBT: Living things',duration:'30 min',questions:20,status:'Completed',score:'16/20'},
+  {subject:'Social Studies',title:'Third term CBT: Government',duration:'30 min',questions:20,status:'In progress'}
 ];
 const examQuestionBank={
   'math-cbt':{duration:180,questions:[
@@ -1057,12 +1057,12 @@ const examQuestionBank={
   ]}
 };
 function pageCbtExamsStudent(label){
-  return `<section class="page workspace-page" id="cbt-exams"><div class="page-heading"><div><p class="eyebrow">Computer-based tests</p><h1>${label}</h1><p class="subtitle">No CBT exam data source is built yet — this isn't showing you fake data.</p></div></div><section class="data-card"><div class="empty-state"><span class="mini-avatar">✓</span><h3>Not available yet</h3><p>CBT exams (questions, timed attempts, auto-grading) haven't been built on the backend — it's a real feature, not a quick wire-up. Ask if you'd like it built.</p></div></section></section>`;
+  return `<section class="page workspace-page" id="cbt-exams"><div class="page-heading"><div><p class="eyebrow">Computer-based tests</p><h1>${label}</h1><p class="subtitle">No CBT exam data source is built yet: this isn't showing you fake data.</p></div></div><section class="data-card"><div class="empty-state"><span class="mini-avatar">✓</span><h3>Not available yet</h3><p>CBT exams (questions, timed attempts, auto-grading) haven't been built on the backend — it's a real feature, not a quick wire-up. Ask if you'd like it built.</p></div></section></section>`;
 }
 const teacherExams=[
-  {title:'Third term CBT — Algebra & Geometry',cls:'JSS 2A',questions:30,status:'Published'},
+  {title:'Third term CBT: Algebra & Geometry',cls:'JSS 2A',questions:30,status:'Published'},
   {title:'Mid-term mock test',cls:'JSS 2A',questions:15,status:'Pending approval'},
-  {title:'Quick quiz — Fractions',cls:'JSS 2B',questions:10,status:'Draft'}
+  {title:'Quick quiz: Fractions',cls:'JSS 2B',questions:10,status:'Draft'}
 ];
 function pageCbtExamsTeacher(label){
   const kpis=[['Published','1','Live for students'],['Pending approval','1','Awaiting principal sign-off'],['Drafts','1','Question bank in progress'],['Avg completion','92%','Across published exams']];
@@ -1107,7 +1107,7 @@ function cbtSubmitExam(){
   document.getElementById('cbtRunner').style.display='none';
   const rv=document.getElementById('cbtResultView');
   rv.style.display='block';
-  rv.innerHTML=`<section class="data-card cbt-result-card"><p class="eyebrow">Exam submitted</p><h2>${correct} / ${total} correct</h2><div class="cbt-score-bar"><span style="width:${pct}%"></span></div><p class="cbt-score-note">${pct>=50?'Well done — you passed.':'Keep practising — review the topics you missed.'}</p><button class="new-button" id="cbtBackBtn">Back to exams</button></section>`;
+  rv.innerHTML=`<section class="data-card cbt-result-card"><p class="eyebrow">Exam submitted</p><h2>${correct} / ${total} correct</h2><div class="cbt-score-bar"><span style="width:${pct}%"></span></div><p class="cbt-score-note">${pct>=50?'Well done. You passed.':'Keep practising. Review the topics you missed.'}</p><button class="new-button" id="cbtBackBtn">Back to exams</button></section>`;
   cbtState=null;
 }
 
@@ -1122,11 +1122,11 @@ function pageMyChildren(label){
 }
 
 function pageStudentClasses(label){
-  return `<section class="page workspace-page" id="${slug(label)}"><div class="page-heading"><div><p class="eyebrow">My classes</p><h1>${label}</h1><p class="subtitle">Live from the API — subjects and teachers for your class.</p></div></div><section class="data-card"><table class="data-table"><thead><tr><th>Subject</th><th>Teacher</th></tr></thead><tbody id="realStudentSubjectsBody"><tr><td colspan="2">Sign in as a student to load subjects…</td></tr></tbody></table></section></section>`;
+  return `<section class="page workspace-page" id="${slug(label)}"><div class="page-heading"><div><p class="eyebrow">My classes</p><h1>${label}</h1><p class="subtitle">Live from the API, subjects and teachers for your class.</p></div></div><section class="data-card"><table class="data-table"><thead><tr><th>Subject</th><th>Teacher</th></tr></thead><tbody id="realStudentSubjectsBody"><tr><td colspan="2">Sign in as a student to load subjects…</td></tr></tbody></table></section></section>`;
 }
 function pageTimetable(label){
   if(activeRole==='student'){
-    return `<section class="page workspace-page" id="${slug(label)}"><div class="page-heading"><div><p class="eyebrow">My timetable</p><h1>${label}</h1><p class="subtitle">No timetable data source is built yet — this isn't showing you fake data.</p></div></div><section class="data-card"><div class="empty-state"><span class="mini-avatar">▤</span><h3>Not available yet</h3><p>Timetable scheduling hasn't been built on the backend. When it is, this page will show your real weekly schedule.</p></div></section></section>`;
+    return `<section class="page workspace-page" id="${slug(label)}"><div class="page-heading"><div><p class="eyebrow">My timetable</p><h1>${label}</h1><p class="subtitle">No timetable data source is built yet: this isn't showing you fake data.</p></div></div><section class="data-card"><div class="empty-state"><span class="mini-avatar">▤</span><h3>Not available yet</h3><p>Timetable scheduling hasn't been built on the backend. When it is, this page will show your real weekly schedule.</p></div></section></section>`;
   }
   if(activeRole==='teacher'){
     const cls=teacherClassMap['Tunde Bello']?.cls||'JSS 2A';
@@ -1137,13 +1137,13 @@ function pageTimetable(label){
   return pageMarkup(label);
 }
 function pageStudentResults(label){
-  return `<section class="page workspace-page" id="${slug(label)}"><div class="page-heading"><div><p class="eyebrow">Results</p><h1>${label}</h1><p class="subtitle">Live from the API — every published result for your account.</p></div></div><section class="data-card"><table class="data-table"><thead><tr><th>Subject</th><th>Term</th><th>CA</th><th>Exam</th><th>Total</th><th>Grade</th></tr></thead><tbody id="realStudentResultsBody"><tr><td colspan="6">Sign in as a student to load results…</td></tr></tbody></table></section></section>`;
+  return `<section class="page workspace-page" id="${slug(label)}"><div class="page-heading"><div><p class="eyebrow">Results</p><h1>${label}</h1><p class="subtitle">Live from the API, every published result for your account.</p></div></div><section class="data-card"><table class="data-table"><thead><tr><th>Subject</th><th>Term</th><th>CA</th><th>Exam</th><th>Total</th><th>Grade</th></tr></thead><tbody id="realStudentResultsBody"><tr><td colspan="6">Sign in as a student to load results…</td></tr></tbody></table></section></section>`;
 }
 function pageParentResults(label){
   return `<section class="page workspace-page" id="${slug(label)}"><div class="page-heading"><div><p class="eyebrow">Live from the API</p><h1>${label}</h1><p class="subtitle">Published results for your linked children.</p></div></div><div id="realParentResultsBlocks"><p class="modal-sub">Sign in as a parent to load results…</p></div></section>`;
 }
 /** Fetches real linked children once (GuardiansService.myChildren via
- * /portal/parent/children), then one results call per child — a parent
+ * /portal/parent/children), then one results call per child; a parent
  * with no linked students yet gets an honest empty state, not fake
  * children (there are currently no real StudentGuardian links seeded). */
 async function loadRealParentResults(){
@@ -1177,7 +1177,7 @@ function pageResults(label){
   if(activeRole==='teacher')return pageTeacherResultsReal(label);
   return pageMarkup(label);
 }
-/** Real marks entry — teacher-only (CLAUDE.md: teachers "enter/submit
+/** Real marks entry, teacher-only (CLAUDE.md: teachers "enter/submit
  * results, not approve/publish them"). Proprietor/Principal's Academics
  * → Marks entry tab stays the pre-existing mock display; this is the one
  * real, working "add marks" surface, and it's only ever rendered when
@@ -1207,7 +1207,7 @@ async function submitResult(id){
   }
 }
 /** Step 1 of "Add marks": which subject. Options come from the teacher's
- * own TeacherSubjectAssignment rows (GET /portal/teacher/classes) — a
+ * own TeacherSubjectAssignment rows (GET /portal/teacher/classes); a
  * teacher only ever sees subjects they actually teach, "and they can
  * only upload for their subject only" is enforced again server-side by
  * POST /results regardless. */
@@ -1226,7 +1226,7 @@ async function openAddMarksModal(){
   formModal({
     eyebrow:'Results',
     title:'Add marks',
-    sub:'Pick the subject you want to enter marks for — you’ll then choose one or more of your classes.',
+    sub:'Pick the subject you want to enter marks for, you’ll then choose one or more of your classes.',
     fields:[{name:'subject',label:'Subject',type:'select',options:subjectNames}],
     submitLabel:'Continue',
     onSubmit:d=>{
@@ -1236,7 +1236,7 @@ async function openAddMarksModal(){
     },
   });
 }
-/** Step 2: which of the teacher's classes for that subject — "they can
+/** Step 2: which of the teacher's classes for that subject; "they can
  * upload for multiple students in multiple classes", so this is a
  * checkbox group of arms (a SchoolClass assignment covers every arm
  * under it, so each class is expanded to its real arms for roster
@@ -1264,7 +1264,7 @@ async function openMarksClassPickerModal(subjectId,subjectName,classAssignments)
     },
   });
 }
-/** Step 3: the actual marks-entry grid — one row per student across every
+/** Step 3: the actual marks-entry grid; one row per student across every
  * selected arm, CA + Exam inputs, blank rows are skipped on save. Each
  * filled row becomes its own POST /results (DRAFT), same "loop one call
  * per item" pattern as the multi-class teacher-subject assignment flow. */
@@ -1289,7 +1289,7 @@ async function openMarksEntryModal(subjectId,subjectName,armIds,armOptions){
 
   const rowsHtml=students.map((s,i)=>`<div class="attendance-row"><span class="person-cell"><span class="mini-avatar">${initialsOf(s.firstName+' '+s.lastName)}</span>${s.firstName} ${s.lastName}<small style="display:block;color:var(--muted);font-size:10px">${s.armLabel}</small></span><input class="attendance-reason" name="ca-${i}" type="number" min="0" max="100" placeholder="CA /100"><input class="attendance-reason" name="exam-${i}" type="number" min="0" max="100" placeholder="Exam /100"></div>`).join('');
 
-  openModal(`<p class="eyebrow">Results</p><h2>${subjectName} marks · ${term.name}</h2><p class="modal-sub">Leave a student blank to skip them. Marks save as drafts — submit each for approval when ready.</p><form onsubmit="__marksSubmit(event)"><div class="attendance-list">${rowsHtml}</div><div class="form-actions"><button type="button" class="outline-button" data-modal-close>Cancel</button><button type="submit" class="new-button">Save marks</button></div></form>`);
+  openModal(`<p class="eyebrow">Results</p><h2>${subjectName} marks · ${term.name}</h2><p class="modal-sub">Leave a student blank to skip them. Marks save as drafts. Submit each for approval when ready.</p><form onsubmit="__marksSubmit(event)"><div class="attendance-list">${rowsHtml}</div><div class="form-actions"><button type="button" class="outline-button" data-modal-close>Cancel</button><button type="submit" class="new-button">Save marks</button></div></form>`);
 
   window.__marksSubmit=async(e)=>{
     e.preventDefault();
@@ -1324,7 +1324,7 @@ const pendingApprovals=[
   {type:'Assignment',title:'Photosynthesis diagram labelling',teacher:'Mr. Eze',cls:'SS 1A',submitted:'22 Aug'}
 ];
 function pageContentApprovals(label){
-  return `<section class="page workspace-page" id="content-approvals"><div class="page-heading"><div><p class="eyebrow">Academic content</p><h1>${label}</h1><p class="subtitle">No approval workflow is built yet — this isn't showing you fake data.</p></div></div><section class="data-card"><div class="empty-state"><span class="mini-avatar">✓</span><h3>Coming soon</h3><p>Assignments post directly today (see Assignments) — a review/approval step before publishing hasn't been built on the backend. CBT exams have no data source at all yet.</p></div></section></section>`;
+  return `<section class="page workspace-page" id="content-approvals"><div class="page-heading"><div><p class="eyebrow">Academic content</p><h1>${label}</h1><p class="subtitle">No approval workflow is built yet: this isn't showing you fake data.</p></div></div><section class="data-card"><div class="empty-state"><span class="mini-avatar">✓</span><h3>Coming soon</h3><p>Assignments post directly today (see Assignments); a review/approval step before publishing hasn't been built on the backend. CBT exams have no data source at all yet.</p></div></section></section>`;
 }
 
 const messageDirectory=['Adetola Okon (Proprietor)','Bolanle Adeyemi (Principal)','Chinwe Okafor (Bursar)','Miriam Danladi (HR)','Mrs. Dada (Teacher)','Mr. James (Teacher)','Alhaji Ibrahim (Parent)','Mrs. Nwosu (Parent)','Nneka Okon (Parent)','Ada Okon (Student)'];
@@ -1359,12 +1359,12 @@ function pageReports(label){
 
 function renderNav(role){nav.innerHTML=`<p class="nav-label">${roles[role].title} workspace</p>${navs[role].map((item,i)=>{const view=i===0?'dashboard':slug(item);return `<a class="nav-link ${i===0?'active':''}" href="#${view}" data-view="${view}"><span>${icons[i%icons.length]}</span>${item}${item==='Fees & payments'?'<b>38</b>':''}</a>`}).join('')}`;const mobile=role==='parent'||role==='student';document.getElementById('mobileBottomNav').innerHTML=mobile?navs[role].slice(0,5).map((item,i)=>`<a class="${i===0?'active':''}" href="#${i===0?'dashboard':slug(item)}" data-view="${i===0?'dashboard':slug(item)}"><span>${icons[i]}</span>${item}</a>`).join(''):'';bindNavigation()}
 const dashboardScopes={proprietor:['fees','payroll','staff','students','academics','finance'],principal:['fees','payroll','staff','students','academics'],bursar:['fees','payroll','staff','students','finance'],hr:['payroll','staff','students'],teacher:['academics','students'],parent:[],student:[],operations:[],superadmin:[],compliance:['payroll']};
-/** Fills the Control Center's real numbers — student/staff totals, real
+/** Fills the Control Center's real numbers: student/staff totals, real
  * campuses with real per-campus student counts, and the submitted-results
  * count that feeds both the "Academics" attention card and the
  * Proprietor/Principal workspace cards. Each fetch is independent
- * (Promise.all would let one 403 — /staff-profiles isn't open to every
- * role — block the others that would have succeeded). Anything with no
+ * (Promise.all would let one 403, /staff-profiles isn't open to every
+ * role, block the others that would have succeeded). Anything with no
  * live source yet (attendance %, fee collection) stays a plain "Coming
  * soon" cell rather than a fabricated number. */
 async function loadRealDashboardMetrics(){
@@ -1407,7 +1407,7 @@ async function loadRealDashboardMetrics(){
   }catch(err){
     realDashboardStats.submittedResults=0;
   }
-  // Re-run just the two bits that read realDashboardStats — not the full
+  // Re-run just the two bits that read realDashboardStats; not the full
   // renderDashboard(), which would reset #greeting back to the mock
   // persona name and undo loadRealStudentPortalData()'s real-name patch.
   applyPrincipalDashboardCopy(activeRole);
@@ -1427,7 +1427,7 @@ function applyDashboardScope(role){
 }
 const dashboardFeesCopy={
   proprietor:['₦8.4m is overdue','Families have missed payment by more than 30 days.'],
-  principal:['Fees are overdue','Flag it to the bursar — revenue figures aren’t shown here.']
+  principal:['Fees are overdue','Flag it to the bursar, revenue figures aren’t shown here.']
 };
 const revenueRestrictedRoles=new Set(['principal']);
 function payrollCardCopyFor(role){
@@ -1456,7 +1456,7 @@ function payrollCardCopyFor(role){
 /** Real counts filled in by loadRealDashboardMetrics() once the API
  * responds; null means "not loaded yet" so copy can show a neutral
  * loading state instead of a stale or fabricated number. Nothing here
- * gets a fake placeholder number — see submittedResultsCopy(). */
+ * gets a fake placeholder number; see submittedResultsCopy(). */
 const realDashboardStats={submittedResults:null};
 function submittedResultsCopy(){
   if(realDashboardStats.submittedResults===null)return 'Loading…';
@@ -1467,8 +1467,8 @@ const workspaceCardCopy={
   proprietor:[['⌂','Today’s priority','Approve payroll and clear overdue fees.','people-and-payroll'],['✓','Action queue',submittedResultsCopy,'academics'],['◫','Useful reports','Share a clear update with your team.','reports']],
   principal:[['✎','Result approvals',submittedResultsCopy,'academics'],['♟','Teacher coverage','Review assignments and class coverage this term.','teachers'],['✓','Attendance exceptions','Check classes with repeated absences.','attendance']],
   bursar:[['₦','Reconciliation queue','17 bank transfers need a reference.','reconciliation'],['◫','Payroll prep','Move this month’s payroll through review.','payroll'],['◫','Arrears follow-up','67 families are more than 30 days overdue.','arrears']],
-  hr:[['♙','Leave requests','Coming soon — leave tracking isn’t built yet.','leave'],['◫','Payroll inputs','Prepare salary inputs for this month’s run.','payroll'],['✓','Document renewals','Coming soon — staff document tracking isn’t built yet.','documents']],
-  teacher:[['✓','Take attendance','Mark today’s register for your class.','attendance'],['✎','Mark submissions','Coming soon — assignment submission tracking isn’t built yet.','assignments'],['▤','Your timetable','See today’s periods at a glance.','timetable']],
+  hr:[['♙','Leave requests','Coming soon. Leave tracking isn’t built yet.','leave'],['◫','Payroll inputs','Prepare salary inputs for this month’s run.','payroll'],['✓','Document renewals','Coming soon. Staff document tracking isn’t built yet.','documents']],
+  teacher:[['✓','Take attendance','Mark today’s register for your class.','attendance'],['✎','Mark submissions','Coming soon. Assignment submission tracking isn’t built yet.','assignments'],['▤','Your timetable','See today’s periods at a glance.','timetable']],
   parent:[['♥','Fee balance','Pay Emeka’s outstanding balance.','fees'],['✓','Attendance','Check this week’s attendance for your children.','attendance'],['▤','Timetable','See what your children are studying today.','timetable']],
   student:[['✎','Assignments','Keep up with what’s due this week.','assignments'],['▤','Your timetable','See today’s classes at a glance.','timetable'],['✓','Results','Check your latest scores.','results']]
 };
@@ -1488,14 +1488,14 @@ function applyPrincipalDashboardCopy(role){
       neutral.querySelector('p:not(.tag)').textContent=submittedResultsCopy();
     }else{
       // Every other role that can see the "academics" scope (currently
-      // just teacher) has no live-able summary yet — say so plainly
+      // just teacher) has no live-able summary yet, say so plainly
       // instead of showing the old fixed mock numbers.
       neutral.querySelector('h3').textContent='Coming soon';
       neutral.querySelector('p:not(.tag)').textContent='A live academics summary for this role isn’t built yet.';
     }
   }
 }
-function renderDashboard(role){applyDashboardScope(role);applyPrincipalDashboardCopy(role);const r=roles[role];document.getElementById('roleEyebrow').textContent=`Tuesday, 12 August · ${r.title} view`;document.getElementById('greeting').textContent=`Good morning, ${r.name}.`;document.getElementById('roleSubtitle').textContent=`Your ${r.title.toLowerCase()} workspace is ready.`;document.getElementById('roleSymbol').textContent=r.symbol;document.getElementById('roleBriefTitle').textContent=r.brief;document.getElementById('roleBriefText').textContent=r.text;const roleActionBtn=document.getElementById('roleAction');roleActionBtn.innerHTML=`${r.action} <span>→</span>`;roleActionBtn.removeAttribute('data-pay-child');if(role==='parent'){roleActionBtn.setAttribute('data-pay-child','Emeka Okon');roleActionBtn.removeAttribute('data-toast')}else{roleActionBtn.setAttribute('data-toast',`${r.action} — done`)}const perm=rolePermissions[role]||{chips:[],restricted:[]};document.getElementById('permissionChips').innerHTML=perm.chips.map(x=>`<span class="permission-chip">${x}</span>`).join('')+perm.restricted.map(x=>`<span class="permission-chip restricted">✕ ${x}</span>`).join('');document.getElementById('workspaceTitle').textContent=`${r.title} workspace`;document.getElementById('workspaceGrid').innerHTML=workspaceCardsFor(role).map(x=>`<article class="workspace-card"${x[3]?` data-goto-page="${x[3]}"`:''}><div class="workspace-icon">${x[0]}</div><h3>${x[1]}</h3><p>${x[2]}</p></article>`).join('')}
+function renderDashboard(role){applyDashboardScope(role);applyPrincipalDashboardCopy(role);const r=roles[role];document.getElementById('roleEyebrow').textContent=`Tuesday, 12 August · ${r.title} view`;document.getElementById('greeting').textContent=`Good morning, ${r.name}.`;document.getElementById('roleSubtitle').textContent=`Your ${r.title.toLowerCase()} workspace is ready.`;document.getElementById('roleSymbol').textContent=r.symbol;document.getElementById('roleBriefTitle').textContent=r.brief;document.getElementById('roleBriefText').textContent=r.text;const roleActionBtn=document.getElementById('roleAction');roleActionBtn.innerHTML=`${r.action} <span>→</span>`;roleActionBtn.removeAttribute('data-pay-child');if(role==='parent'){roleActionBtn.setAttribute('data-pay-child','Emeka Okon');roleActionBtn.removeAttribute('data-toast')}else{roleActionBtn.setAttribute('data-toast',`${r.action}: done`)}const perm=rolePermissions[role]||{chips:[],restricted:[]};document.getElementById('permissionChips').innerHTML=perm.chips.map(x=>`<span class="permission-chip">${x}</span>`).join('')+perm.restricted.map(x=>`<span class="permission-chip restricted">✕ ${x}</span>`).join('');document.getElementById('workspaceTitle').textContent=`${r.title} workspace`;document.getElementById('workspaceGrid').innerHTML=workspaceCardsFor(role).map(x=>`<article class="workspace-card"${x[3]?` data-goto-page="${x[3]}"`:''}><div class="workspace-icon">${x[0]}</div><h3>${x[1]}</h3><p>${x[2]}</p></article>`).join('')}
 function showPage(view){dashboard.style.display=view==='dashboard'?'block':'none';document.querySelectorAll('.workspace-page').forEach(p=>p.classList.toggle('visible',p.id===view));document.querySelectorAll('[data-view]').forEach(l=>l.classList.toggle('active',l.dataset.view===view));if(view!=='dashboard')location.hash=view}
 function bindNavigation(){document.querySelectorAll('[data-view]').forEach(l=>l.addEventListener('click',e=>{e.preventDefault();showPage(l.dataset.view)}))}
 function toast(text){let el=document.querySelector('.toast');if(!el){el=document.createElement('div');el.className='toast';document.body.append(el)}el.textContent=text;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2400)}
@@ -1573,7 +1573,7 @@ function openOwnExamResultModal(title){
 function openExamResultsModal(title){
   detailModal({eyebrow:'Exam results',title,rows:[['Average score','78%'],['Highest score','96%'],['Lowest score','42%'],['Completion rate','92%']]});
 }
-/** Real assignment posting — POST /assignments via the SchoolOS API.
+/** Real assignment posting: POST /assignments via the SchoolOS API.
  * TEACHER is scoped to their own classes (/portal/teacher/class-arms);
  * PROPRIETOR/PRINCIPAL can post to any class in the tenant (/classes),
  * matching what the backend actually allows for each role. */
@@ -1622,7 +1622,7 @@ async function openNewAssignmentRealModal(){
   });
 }
 function openNewExamModal(){
-  openModal(`<p class="eyebrow">CBT Exams</p><h2>New CBT exam</h2><p class="modal-sub">Add your questions below — each needs 4 options and a correct answer.</p>
+  openModal(`<p class="eyebrow">CBT Exams</p><h2>New CBT exam</h2><p class="modal-sub">Add your questions below: each needs 4 options and a correct answer.</p>
     <form onsubmit="__examSubmit(event)">
       <div class="form-row"><div class="form-field"><label>Exam title</label><input name="title" placeholder="e.g. Mid-term mock test"></div><div class="form-field"><label>Class</label><select name="cls">${['JSS 2A','JSS 2B','JSS 3B','SS 1A'].map(c=>`<option>${c}</option>`).join('')}</select></div></div>
       <div class="form-field"><label>Duration (minutes)</label><input name="duration" type="number" placeholder="30"></div>
@@ -1652,7 +1652,7 @@ function openNewExamModal(){
 
 function openAssignmentWorkModal(title){
   const a=studentAssignments.find(x=>x.title===title);if(!a)return;
-  if(a.status==='Graded'){detailModal({eyebrow:a.subject,title:a.title,rows:[['Score',a.score],['Teacher comment','Good structure — check your working in Q3.']]});return}
+  if(a.status==='Graded'){detailModal({eyebrow:a.subject,title:a.title,rows:[['Score',a.score],['Teacher comment','Good structure. Check your working in Q3.']]});return}
   if(a.status==='Submitted'){detailModal({eyebrow:a.subject,title:a.title,rows:[['Status','Submitted, awaiting grading'],['Submitted','Today']]});return}
   formModal({eyebrow:a.subject,title:a.title,sub:`Due ${a.due}`,
     fields:[{name:'answer',label:'Your answer',type:'textarea',placeholder:'Type your response, or attach a file below'}],
@@ -1700,9 +1700,9 @@ function openChildAttendanceModal(name){
 }
 
 const lessons=[
-  {id:1,subject:'Mathematics',cls:'JSS 2A',term:'Third term',title:'Quadratic equations — introduction',date:'25 Aug',resources:[{name:'Quadratic-equations-notes.pdf',type:'PDF'},{name:'Worked-examples.pdf',type:'PDF'}]},
+  {id:1,subject:'Mathematics',cls:'JSS 2A',term:'Third term',title:'Quadratic equations: introduction',date:'25 Aug',resources:[{name:'Quadratic-equations-notes.pdf',type:'PDF'},{name:'Worked-examples.pdf',type:'PDF'}]},
   {id:2,subject:'English',cls:'JSS 2A',term:'Third term',title:'Comprehension: reading for meaning',date:'24 Aug',resources:[{name:'Comprehension-passage.docx',type:'Doc'}]},
-  {id:3,subject:'Basic Science',cls:'JSS 2A',term:'Third term',title:'Photosynthesis — process & diagram',date:'21 Aug',resources:[{name:'Photosynthesis-diagram.png',type:'Image'},{name:'Lesson-recording.mp4',type:'Video'}]},
+  {id:3,subject:'Basic Science',cls:'JSS 2A',term:'Third term',title:'Photosynthesis: process & diagram',date:'21 Aug',resources:[{name:'Photosynthesis-diagram.png',type:'Image'},{name:'Lesson-recording.mp4',type:'Video'}]},
   {id:4,subject:'Mathematics',cls:'JSS 2B',term:'Third term',title:'Simultaneous equations',date:'20 Aug',resources:[{name:'Simultaneous-equations.pdf',type:'PDF'}]},
   {id:5,subject:'Physics',cls:'SS 1A',term:'Third term',title:'Newton’s laws of motion',date:'23 Aug',resources:[{name:'Newtons-laws-slides.pdf',type:'PDF'}]}
 ];
@@ -1715,7 +1715,7 @@ function pageLessonsTeacher(label){
   return `<section class="page workspace-page" id="lessons"><div class="page-heading"><div><p class="eyebrow">Deliver learning</p><h1>${label}</h1><p class="subtitle">Create lessons and share resources with your assigned subject and class.</p></div><button class="new-button" data-modal="new-lesson">+ New lesson</button></div><div class="screen-kpis">${kpis.map(s=>`<article class="screen-kpi"><p>${s[0]}</p><strong>${s[1]}</strong><small>${s[2]}</small></article>`).join('')}</div><section class="data-card"><table class="data-table"><thead><tr><th>Lesson</th><th>Subject</th><th>Class</th><th>Date</th><th>Resources</th><th></th></tr></thead><tbody>${rows}</tbody></table></section></section>`;
 }
 function pageLessonsStudent(label){
-  return `<section class="page workspace-page" id="lessons"><div class="page-heading"><div><p class="eyebrow">Your lessons</p><h1>${label}</h1><p class="subtitle">No lesson/resource data source is built yet — this isn't showing you fake data.</p></div></div><section class="data-card"><div class="empty-state"><span class="mini-avatar">▤</span><h3>Not available yet</h3><p>Lesson notes and resources haven't been built on the backend. Assignments (with attached resource links) already work — check that page instead.</p></div></section></section>`;
+  return `<section class="page workspace-page" id="lessons"><div class="page-heading"><div><p class="eyebrow">Your lessons</p><h1>${label}</h1><p class="subtitle">No lesson/resource data source is built yet: this isn't showing you fake data.</p></div></div><section class="data-card"><div class="empty-state"><span class="mini-avatar">▤</span><h3>Not available yet</h3><p>Lesson notes and resources haven't been built on the backend. Assignments (with attached resource links) already work — check that page instead.</p></div></section></section>`;
 }
 function pageLessonsParent(label){
   const rows=parentChildren.map(c=>{const cls=c.cls.split(' · ')[0];return lessons.filter(l=>l.cls===cls).map(l=>`<tr><td><strong>${l.title}</strong></td><td>${c.name}</td><td>${l.subject}</td><td>${l.date}</td><td>${l.resources.length} file${l.resources.length===1?'':'s'}</td><td class="row-action"><button class="outline-button" data-view-lesson="${l.id}">View resources</button></td></tr>`).join('')}).join('');
@@ -1723,7 +1723,7 @@ function pageLessonsParent(label){
   return `<section class="page workspace-page" id="lessons"><div class="page-heading"><div><p class="eyebrow">Your children’s learning</p><h1>${label}</h1><p class="subtitle">Lessons, resources and assignment feedback for your children.</p></div></div><div class="screen-tabs" data-tabs><button class="active" data-tab="lessons">Lessons</button><button data-tab="assignments">Assignments</button></div><div data-tab-panel="lessons" class="tab-panel visible"><section class="data-card"><table class="data-table"><thead><tr><th>Lesson</th><th>Child</th><th>Subject</th><th>Date</th><th>Resources</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="6">No lessons published yet.</td></tr>'}</tbody></table></section></div><div data-tab-panel="assignments" class="tab-panel"><section class="data-card"><table class="data-table"><thead><tr><th>Assignment</th><th>Child</th><th>Subject</th><th>Due date</th><th>Status</th><th>Score</th><th></th></tr></thead><tbody>${assignmentRows}</tbody></table></section></div></section>`;
 }
 /** Out-of-scope Lessons module still shows this as pre-existing mock demo
- * data (Lessons has no backend at all — untouched this pass). The real
+ * data (Lessons has no backend at all, untouched this pass). The real
  * Assignments page/module no longer reads from this array. */
 const teacherAssignments=[
   {title:'Quadratic equations worksheet',cls:'JSS 2A',due:'28 Aug',submissions:'18/31',status:'Published'},
@@ -1735,7 +1735,7 @@ function pageLessonsOversight(label){
   const kpis=[['Lessons this term',String(lessons.length),'Across all classes'],['Resources shared',String(lessons.reduce((n,l)=>n+l.resources.length,0)),'This term'],['Assignments published',String(teacherAssignments.filter(a=>a.status==='Published').length),'Live for students'],['Submissions to grade','18','Across published assignments']];
   const lessonRows=lessons.map(l=>`<tr><td><strong>${l.title}</strong></td><td>${l.subject}</td><td>${l.cls}</td><td>${l.date}</td><td>${l.resources.length} file${l.resources.length===1?'':'s'}</td></tr>`).join('');
   const assignmentRows=teacherAssignments.map(a=>`<tr><td><strong>${a.title}</strong></td><td>${a.cls}</td><td>${a.due}</td><td>${a.submissions}</td><td><span class="status ${a.status!=='Published'?'pending':''}">${a.status}</span></td></tr>`).join('');
-  return `<section class="page workspace-page" id="lessons"><div class="page-heading"><div><p class="eyebrow">Academic oversight</p><h1>${label}</h1><p class="subtitle">Lessons and assignments across every class — view only.</p></div><span class="view-only-badge">View only</span></div><div class="screen-kpis">${kpis.map(s=>`<article class="screen-kpi"><p>${s[0]}</p><strong>${s[1]}</strong><small>${s[2]}</small></article>`).join('')}</div><div class="screen-tabs" data-tabs><button class="active" data-tab="lessons">Lessons</button><button data-tab="assignments">Assignments</button></div><div data-tab-panel="lessons" class="tab-panel visible"><section class="data-card"><table class="data-table"><thead><tr><th>Lesson</th><th>Subject</th><th>Class</th><th>Date</th><th>Resources</th></tr></thead><tbody>${lessonRows}</tbody></table></section></div><div data-tab-panel="assignments" class="tab-panel"><section class="data-card"><table class="data-table"><thead><tr><th>Assignment</th><th>Class</th><th>Due date</th><th>Submissions</th><th>Status</th></tr></thead><tbody>${assignmentRows}</tbody></table></section></div></section>`;
+  return `<section class="page workspace-page" id="lessons"><div class="page-heading"><div><p class="eyebrow">Academic oversight</p><h1>${label}</h1><p class="subtitle">Lessons and assignments across every class, view only.</p></div><span class="view-only-badge">View only</span></div><div class="screen-kpis">${kpis.map(s=>`<article class="screen-kpi"><p>${s[0]}</p><strong>${s[1]}</strong><small>${s[2]}</small></article>`).join('')}</div><div class="screen-tabs" data-tabs><button class="active" data-tab="lessons">Lessons</button><button data-tab="assignments">Assignments</button></div><div data-tab-panel="lessons" class="tab-panel visible"><section class="data-card"><table class="data-table"><thead><tr><th>Lesson</th><th>Subject</th><th>Class</th><th>Date</th><th>Resources</th></tr></thead><tbody>${lessonRows}</tbody></table></section></div><div data-tab-panel="assignments" class="tab-panel"><section class="data-card"><table class="data-table"><thead><tr><th>Assignment</th><th>Class</th><th>Due date</th><th>Submissions</th><th>Status</th></tr></thead><tbody>${assignmentRows}</tbody></table></section></div></section>`;
 }
 function pageLessons(label){
   if(activeRole==='teacher')return pageLessonsTeacher(label);
@@ -1752,7 +1752,7 @@ function openNewLessonModal(){
 }
 function openAddResourceModal(id){
   const l=lessons.find(x=>x.id===Number(id));if(!l)return;
-  formModal({eyebrow:'Lesson resource',title:`Add resource · ${l.title}`,sub:'Accepted: PDF, DOCX, PPT, MP4, JPG/PNG — max 50MB. Stored privately and served through signed URLs.',
+  formModal({eyebrow:'Lesson resource',title:`Add resource · ${l.title}`,sub:'Accepted: PDF, DOCX, PPT, MP4, JPG/PNG, max 50MB. Stored privately and served through signed URLs.',
     fields:[{name:'name',label:'File / link name',placeholder:'e.g. Worked-examples.pdf'},{name:'type',label:'Resource type',type:'select',options:['PDF','Doc','Slides','Video','Image','Link']}],
     submitLabel:'Add resource',
     onSubmit:d=>{l.resources.push({name:d.name||'Untitled resource',type:d.type});refresh();toast(`Resource added · ${d.name||'Untitled resource'}`)}
@@ -1760,12 +1760,12 @@ function openAddResourceModal(id){
 }
 function openLessonResourcesModal(id){
   const l=lessons.find(x=>x.id===Number(id));if(!l)return;
-  const list=l.resources.length?l.resources.map(r=>`<div class="submission-row"><span class="person-cell"><span class="mini-avatar">${r.type[0]}</span>${r.name}</span><button class="outline-button" data-toast="Opening ${r.name} — signed URL generated (demo)">Open</button></div>`).join(''):'<p class="modal-sub">No resources have been added to this lesson yet.</p>';
+  const list=l.resources.length?l.resources.map(r=>`<div class="submission-row"><span class="person-cell"><span class="mini-avatar">${r.type[0]}</span>${r.name}</span><button class="outline-button" data-toast="Opening ${r.name}, signed URL generated (demo)">Open</button></div>`).join(''):'<p class="modal-sub">No resources have been added to this lesson yet.</p>';
   openModal(`<p class="eyebrow">${l.subject} · ${l.cls}</p><h2>${l.title}</h2><div class="submission-list">${list}</div><div class="form-actions"><button class="outline-button" data-modal-close>Close</button></div>`);
 }
 function openChildAssignmentModal(title){
   const a=studentAssignments.find(x=>x.title===title);if(!a)return;
-  if(a.status==='Graded'){detailModal({eyebrow:a.subject,title:a.title,rows:[['Score',a.score],['Teacher comment','Good structure — check your working in Q3.']]});return}
+  if(a.status==='Graded'){detailModal({eyebrow:a.subject,title:a.title,rows:[['Score',a.score],['Teacher comment','Good structure. Check your working in Q3.']]});return}
   detailModal({eyebrow:a.subject,title:a.title,rows:[['Status',a.status],['Due date',a.due]]});
 }
 
@@ -1798,7 +1798,7 @@ function pageLibraryOversight(label){
   const kpis=[['Titles in catalog',String(libraryItems.length),`${libraryItems.reduce((n,i)=>n+i.total,0)} copies total`],['Copies on loan',String(libraryLoans.filter(l=>l.status!=='Returned').length),'Across students & staff'],['Overdue loans',String(libraryLoans.filter(l=>l.status==='Overdue').length),'Flagged for the library team'],['Low-copy titles',String(libraryItems.filter(i=>i.available<=2).length),'2 or fewer copies available']];
   const catalogRows=libraryItems.map(i=>`<tr><td><strong>${i.title}</strong></td><td>${i.author}</td><td>${i.category}</td><td>${i.available} / ${i.total}</td><td>${i.shelf}</td></tr>`).join('');
   const loanRows=libraryLoans.map(l=>`<tr class="${l.status==='Overdue'?'row-flagged':''}"><td><strong>${l.item}</strong></td><td>${l.borrower}</td><td>${l.borrowerType}</td><td>${l.due}</td><td><span class="status ${l.status!=='Returned'?'pending':''}">${l.status}</span></td></tr>`).join('');
-  return `<section class="page workspace-page" id="library"><div class="page-heading"><div><p class="eyebrow">Library</p><h1>${label}</h1><p class="subtitle">Catalog and loan activity across the campus — view only.</p></div><span class="view-only-badge">View only</span></div><div class="screen-kpis">${kpis.map(s=>`<article class="screen-kpi"><p>${s[0]}</p><strong>${s[1]}</strong><small>${s[2]}</small></article>`).join('')}</div><div class="screen-tabs" data-tabs><button class="active" data-tab="catalog">Catalog</button><button data-tab="loans">Loans</button></div><div data-tab-panel="catalog" class="tab-panel visible"><section class="data-card"><table class="data-table"><thead><tr><th>Title</th><th>Author</th><th>Category</th><th>Available</th><th>Shelf</th></tr></thead><tbody>${catalogRows}</tbody></table></section></div><div data-tab-panel="loans" class="tab-panel"><section class="data-card"><table class="data-table"><thead><tr><th>Item</th><th>Borrower</th><th>Type</th><th>Due</th><th>Status</th></tr></thead><tbody>${loanRows}</tbody></table></section></div></section>`;
+  return `<section class="page workspace-page" id="library"><div class="page-heading"><div><p class="eyebrow">Library</p><h1>${label}</h1><p class="subtitle">Catalog and loan activity across the campus, view only.</p></div><span class="view-only-badge">View only</span></div><div class="screen-kpis">${kpis.map(s=>`<article class="screen-kpi"><p>${s[0]}</p><strong>${s[1]}</strong><small>${s[2]}</small></article>`).join('')}</div><div class="screen-tabs" data-tabs><button class="active" data-tab="catalog">Catalog</button><button data-tab="loans">Loans</button></div><div data-tab-panel="catalog" class="tab-panel visible"><section class="data-card"><table class="data-table"><thead><tr><th>Title</th><th>Author</th><th>Category</th><th>Available</th><th>Shelf</th></tr></thead><tbody>${catalogRows}</tbody></table></section></div><div data-tab-panel="loans" class="tab-panel"><section class="data-card"><table class="data-table"><thead><tr><th>Item</th><th>Borrower</th><th>Type</th><th>Due</th><th>Status</th></tr></thead><tbody>${loanRows}</tbody></table></section></div></section>`;
 }
 function pageLibrary(label){return activeRole==='operations'?pageLibraryStaff(label):pageLibraryOversight(label)}
 function openNewLibraryItemModal(){
@@ -1851,7 +1851,7 @@ function brandPreviewHtml(){
 function pageSettingsProprietor(label){
   const templateRows=documentTemplates.map(t=>`<tr><td><strong>${t.name}</strong></td><td><span class="status ${t.status!=='Published'?'pending':''}">${t.status}</span></td><td>${t.version}</td><td>${t.updated}</td><td class="row-action"><div class="row-actions"><button class="outline-button" data-preview-template="${t.name}">Preview</button><button class="outline-button" data-edit-template="${t.name}">Edit</button>${t.status==='Draft'?`<button class="new-button" data-publish-template="${t.name}">Publish</button>`:''}</div></td></tr>`).join('');
   const importRows=bulkImportHistory.map(h=>`<tr><td>${h.type}</td><td>${h.rows}</td><td><span class="status">${h.status}</span></td><td>${h.date}</td></tr>`).join('');
-  return `<section class="page workspace-page" id="settings"><div class="page-heading"><div><p class="eyebrow">Settings</p><h1>${label}</h1><p class="subtitle">Branding, document templates and mid-term data migration for your school.</p></div></div><div class="screen-tabs" data-tabs><button class="active" data-tab="branding">Branding</button><button data-tab="templates">Document templates</button><button data-tab="bulk-import">Bulk import</button></div><div data-tab-panel="branding" class="tab-panel visible"><div class="workspace-grid-main"><section class="data-card" style="padding:18px"><form id="brandingForm" onsubmit="__brandingSubmit(event)"><div class="form-row"><div class="form-field"><label>School display name</label><input name="schoolName" value="${brandingSettings.schoolName}"></div><div class="form-field"><label>Applies to</label><select name="campus">${['All campuses','Ikoyi','Lekki','Yaba'].map(c=>`<option ${c===brandingSettings.campus?'selected':''}>${c}</option>`).join('')}</select></div></div><div class="form-row"><div class="form-field"><label>Primary colour</label><input name="primaryColor" type="color" value="${brandingSettings.primaryColor}"></div><div class="form-field"><label>Secondary colour</label><input name="secondaryColor" type="color" value="${brandingSettings.secondaryColor}"></div></div><div class="modal-upload">📎 Upload logo (demo only) — current: ${brandingSettings.logoLabel}</div><div class="form-field"><label>Login page headline</label><input name="loginHeadline" value="${brandingSettings.loginHeadline}"></div><div class="form-field"><label>Login page subtext</label><textarea name="loginSubtext">${brandingSettings.loginSubtext}</textarea></div><div class="form-actions"><button type="submit" class="new-button">Save branding</button></div></form></section><aside class="workspace-aside"><section class="side-card"><p class="eyebrow">Live preview</p><h3 id="brandPreviewName">${brandingSettings.schoolName}</h3><div id="brandPreviewBox">${brandPreviewHtml()}</div><small>This is what families see on your school’s login page. Never resolves for other tenants.</small></section></aside></div></div><div data-tab-panel="templates" class="tab-panel"><section class="data-card"><table class="data-table"><thead><tr><th>Template</th><th>Status</th><th>Version</th><th>Last updated</th><th></th></tr></thead><tbody>${templateRows}</tbody></table></section></div><div data-tab-panel="bulk-import" class="tab-panel"><section class="data-card" style="padding:18px"><p class="modal-sub">Import existing student, staff and result records so a school can switch mid-term without losing history.</p><div class="workspace-grid"><article class="side-card"><p class="eyebrow">Students</p><h3>Student records</h3><p>Name, class, guardian, admission number</p><div class="row-actions"><button class="outline-button" data-toast="Template downloaded (demo)">Download template</button><button class="new-button" data-bulk-import="Students">Upload & import</button></div></article><article class="side-card"><p class="eyebrow">Staff</p><h3>Staff records</h3><p>Name, role, subjects, employment date</p><div class="row-actions"><button class="outline-button" data-toast="Template downloaded (demo)">Download template</button><button class="new-button" data-bulk-import="Staff">Upload & import</button></div></article><article class="side-card"><p class="eyebrow">Results</p><h3>Result records</h3><p>Student, subject, term, scores</p><div class="row-actions"><button class="outline-button" data-toast="Template downloaded (demo)">Download template</button><button class="new-button" data-bulk-import="Results">Upload & import</button></div></article></div></section><section class="data-card" style="margin-top:14px"><div class="data-toolbar"><strong>Import history</strong></div><table class="data-table"><thead><tr><th>Type</th><th>Rows</th><th>Status</th><th>Date</th></tr></thead><tbody>${importRows}</tbody></table></section></div></section>`;
+  return `<section class="page workspace-page" id="settings"><div class="page-heading"><div><p class="eyebrow">Settings</p><h1>${label}</h1><p class="subtitle">Branding, document templates and mid-term data migration for your school.</p></div></div><div class="screen-tabs" data-tabs><button class="active" data-tab="branding">Branding</button><button data-tab="templates">Document templates</button><button data-tab="bulk-import">Bulk import</button></div><div data-tab-panel="branding" class="tab-panel visible"><div class="workspace-grid-main"><section class="data-card" style="padding:18px"><form id="brandingForm" onsubmit="__brandingSubmit(event)"><div class="form-row"><div class="form-field"><label>School display name</label><input name="schoolName" value="${brandingSettings.schoolName}"></div><div class="form-field"><label>Applies to</label><select name="campus">${['All campuses','Ikoyi','Lekki','Yaba'].map(c=>`<option ${c===brandingSettings.campus?'selected':''}>${c}</option>`).join('')}</select></div></div><div class="form-row"><div class="form-field"><label>Primary colour</label><input name="primaryColor" type="color" value="${brandingSettings.primaryColor}"></div><div class="form-field"><label>Secondary colour</label><input name="secondaryColor" type="color" value="${brandingSettings.secondaryColor}"></div></div><div class="modal-upload">📎 Upload logo (demo only), current: ${brandingSettings.logoLabel}</div><div class="form-field"><label>Login page headline</label><input name="loginHeadline" value="${brandingSettings.loginHeadline}"></div><div class="form-field"><label>Login page subtext</label><textarea name="loginSubtext">${brandingSettings.loginSubtext}</textarea></div><div class="form-actions"><button type="submit" class="new-button">Save branding</button></div></form></section><aside class="workspace-aside"><section class="side-card"><p class="eyebrow">Live preview</p><h3 id="brandPreviewName">${brandingSettings.schoolName}</h3><div id="brandPreviewBox">${brandPreviewHtml()}</div><small>This is what families see on your school’s login page. Never resolves for other tenants.</small></section></aside></div></div><div data-tab-panel="templates" class="tab-panel"><section class="data-card"><table class="data-table"><thead><tr><th>Template</th><th>Status</th><th>Version</th><th>Last updated</th><th></th></tr></thead><tbody>${templateRows}</tbody></table></section></div><div data-tab-panel="bulk-import" class="tab-panel"><section class="data-card" style="padding:18px"><p class="modal-sub">Import existing student, staff and result records so a school can switch mid-term without losing history.</p><div class="workspace-grid"><article class="side-card"><p class="eyebrow">Students</p><h3>Student records</h3><p>Name, class, guardian, admission number</p><div class="row-actions"><button class="outline-button" data-toast="Template downloaded (demo)">Download template</button><button class="new-button" data-bulk-import="Students">Upload & import</button></div></article><article class="side-card"><p class="eyebrow">Staff</p><h3>Staff records</h3><p>Name, role, subjects, employment date</p><div class="row-actions"><button class="outline-button" data-toast="Template downloaded (demo)">Download template</button><button class="new-button" data-bulk-import="Staff">Upload & import</button></div></article><article class="side-card"><p class="eyebrow">Results</p><h3>Result records</h3><p>Student, subject, term, scores</p><div class="row-actions"><button class="outline-button" data-toast="Template downloaded (demo)">Download template</button><button class="new-button" data-bulk-import="Results">Upload & import</button></div></article></div></section><section class="data-card" style="margin-top:14px"><div class="data-toolbar"><strong>Import history</strong></div><table class="data-table"><thead><tr><th>Type</th><th>Rows</th><th>Status</th><th>Date</th></tr></thead><tbody>${importRows}</tbody></table></section></div></section>`;
 }
 function pageSettings(label){return activeRole==='proprietor'?pageSettingsProprietor(label):pageMarkup(label)}
 function saveBranding(form){
@@ -1869,11 +1869,11 @@ function saveBranding(form){
 window.__brandingSubmit=e=>{e.preventDefault();saveBranding(e.target)};
 function openTemplatePreviewModal(name){
   const fields=(templateMergeFields[name]||[]).map(f=>`<span class="permission-chip">${f}</span>`).join('');
-  openModal(`<p class="eyebrow">Template preview</p><h2>${name}</h2><p class="modal-sub">Merge fields used by this template — replaced with real data when a document is generated. Tenant-scoped: this template and its assets never resolve for another school.</p><div class="submission-list">${fields}</div><div class="form-actions"><button class="outline-button" data-modal-close>Close</button></div>`);
+  openModal(`<p class="eyebrow">Template preview</p><h2>${name}</h2><p class="modal-sub">Merge fields used by this template, replaced with real data when a document is generated. Tenant-scoped: this template and its assets never resolve for another school.</p><div class="submission-list">${fields}</div><div class="form-actions"><button class="outline-button" data-modal-close>Close</button></div>`);
 }
 function openTemplateEditModal(name){
   const t=documentTemplates.find(x=>x.name===name);if(!t)return;
-  formModal({eyebrow:'Edit template',title:name,sub:'Editing creates a new draft version — publish it to make it live for every new document.',
+  formModal({eyebrow:'Edit template',title:name,sub:'Editing creates a new draft version. Publish it to make it live for every new document.',
     fields:[{name:'notes',label:'Change notes',type:'textarea',placeholder:'What did you change in this version?'}],
     submitLabel:'Save as draft',
     onSubmit:()=>{const n=Number(t.version.replace('v',''))+1;t.version=`v${n}`;t.status='Draft';t.updated='Today';refresh();toast(`Draft saved · ${name} (v${n})`)}

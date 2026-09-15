@@ -8,7 +8,7 @@ import { RequestContextService } from '../context/request-context';
  *
  * Models one hop away from tenantId (Term, ClassArm, TeacherSubjectAssignment,
  * StudentClassHistory, StudentGuardian, UserCampusScope, RefreshToken) are
- * NOT auto-scoped here — they must be reached through a tenant-scoped parent
+ * NOT auto-scoped here: they must be reached through a tenant-scoped parent
  * (e.g. filter ClassArm via its SchoolClass) or explicitly scoped by the
  * calling service. Auto-scoping them would require guessing which nested
  * relation to filter on, which is worse than making the gap explicit.
@@ -37,6 +37,7 @@ const TENANT_SCOPED_MODELS = new Set<Prisma.ModelName>([
   'GradeBand',
   'StreamChangeRequest',
   'TimetableSettings',
+  'DocumentTemplate',
 ]);
 
 const READ_OR_WHERE_OPS = new Set([
@@ -73,10 +74,10 @@ function scopeData(data: unknown, tenantId: string) {
 /**
  * Prisma Client extension: automatically injects/validates tenantId on
  * every query against a tenant-scoped model, sourced from the current
- * request's AsyncLocalStorage context — never from caller-supplied args.
+ * request's AsyncLocalStorage context, never from caller-supplied args.
  *
  * A missing tenant context on a tenant-scoped model is a hard error, not a
- * silent no-op filter — "deny by default" (CLAUDE.md rule #3).
+ * silent no-op filter: "deny by default" (CLAUDE.md rule #3).
  */
 export function tenantScopingExtension(requestContext: RequestContextService) {
   return Prisma.defineExtension({
@@ -91,7 +92,7 @@ export function tenantScopingExtension(requestContext: RequestContextService) {
           const tenantId = requestContext.getTenantId();
           if (!tenantId) {
             throw new ForbiddenException(
-              `No tenant context for scoped model ${model}.${operation} — ` +
+              `No tenant context for scoped model ${model}.${operation}: ` +
                 'use PrismaService.raw for deliberate cross-tenant/platform operations.',
             );
           }

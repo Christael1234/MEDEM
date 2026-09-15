@@ -4,7 +4,7 @@ import { Role } from '@prisma/client';
 
 /**
  * Claims carried on every authenticated request, derived exclusively from
- * the verified JWT — never from request body/query/params (rule #2 in
+ * the verified JWT, never from request body/query/params (rule #2 in
  * CLAUDE.md). SUPER_ADMIN has tenantId = null.
  */
 export interface RequestContextStore {

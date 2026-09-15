@@ -6,7 +6,7 @@ class PromotionAssignmentDto {
   studentId!: string;
 
   /** Omitted/absent means this student graduates instead of moving to a
-   * new class — there's no "next" class arm for them. */
+   * new class: there's no "next" class arm for them. */
   @IsOptional()
   @IsString()
   targetClassArmId?: string;

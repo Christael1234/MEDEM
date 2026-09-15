@@ -15,7 +15,7 @@ export class TimetableController {
   }
 
   // Set break times (and, optionally, the day's start/end) BEFORE
-  // generating — Generate always rebuilds from whatever settings are
+  // generating. Generate always rebuilds from whatever settings are
   // current at that moment.
   @Roles('PROPRIETOR', 'PRINCIPAL')
   @Put('settings')

@@ -13,7 +13,7 @@ export interface TokenPair {
 }
 
 /**
- * Runs entirely against PrismaService.raw — login/refresh/logout happen
+ * Runs entirely against PrismaService.raw: login/refresh/logout happen
  * before any tenant context exists (see PrismaService doc comment), and
  * User/RefreshToken lookups here are keyed by globally-unique fields
  * (email, tokenHash), not by tenant.
@@ -37,7 +37,7 @@ export class AuthService {
     }
 
     // MFA schema exists (User.mfaEnabled/mfaSecret) but verification is a
-    // later-phase UI per CLAUDE.md — not enforced at this layer yet.
+    // later-phase UI per CLAUDE.md, not enforced at this layer yet.
 
     const campusIds = await this.campusIdsFor(user.id);
     const tokens = await this.issueTokenPair(user.id, user.tenantId, user.role, campusIds);
@@ -131,7 +131,7 @@ export class AuthService {
   }
 
   /** Refresh tokens are already high-entropy signed JWTs, not user-chosen
-   * secrets — SHA-256 is the right tool for a lookup/revocation key here,
+   * secrets: SHA-256 is the right tool for a lookup/revocation key here,
    * bcrypt is reserved for the low-entropy User.passwordHash. */
   private hashToken(token: string): string {
     return createHash('sha256').update(token).digest('hex');
