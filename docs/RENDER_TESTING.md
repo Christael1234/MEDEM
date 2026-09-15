@@ -4,7 +4,7 @@ This is for whoever is testing/reviewing the live Render deployment of SchoolOS.
 
 ## 1. URL
 
-Live app: `<PASTE RENDER SERVICE URL HERE, e.g. https://schoolos-api.onrender.com>`
+Live app: `<https://schoolos-api-ma4s.onrender.com>`
 
 Note: Render's free tier spins the service down after inactivity. The **first** request after a period of inactivity can take 30-60 seconds to respond while it cold-starts: this is expected, not a bug.
 
