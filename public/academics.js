@@ -252,8 +252,17 @@
    * than a Junior/Senior one; the same table markup handles both. */
   function timetableGridHtml(data, cellFn) {
     if (!data) return '<p class="modal-sub">Loading…</p>';
+    // A cell can hold more than one slot now (Trade/Elective block
+    // periods — several subjects run in parallel at the same class-arm
+    // day/period, see TimetableService.generate). A student/parent's own
+    // grid is already personalized down to one slot per cell server-side;
+    // the admin's class-arm view can still show several, so every cellFn
+    // gets an array, not a single slot.
     const byKey = {};
-    (data.slots || []).forEach((s) => { byKey[`${s.dayOfWeek}-${s.periodIndex}`] = s; });
+    (data.slots || []).forEach((s) => {
+      const key = `${s.dayOfWeek}-${s.periodIndex}`;
+      (byKey[key] = byKey[key] || []).push(s);
+    });
     const rows = [
       ...(data.periods || []).map((p) => ({ sortKey: p.startTime, kind: 'period', p })),
       ...(data.breaks || []).map((b) => ({ sortKey: b.startTime, kind: 'break', b })),
@@ -264,15 +273,19 @@
       }
       const p = r.p;
       const cells = data.days.map((d) => {
-        const s = byKey[`${d.value}-${p.index}`];
-        return `<td>${s ? cellFn(s) : '<span class="tt-empty">Free</span>'}</td>`;
+        const group = byKey[`${d.value}-${p.index}`];
+        return `<td>${group ? cellFn(group) : '<span class="tt-empty">Free</span>'}</td>`;
       }).join('');
       return `<tr><td class="tt-period">P${p.index + 1} · ${p.startTime}</td>${cells}</tr>`;
     }).join('');
     return `<table class="data-table timetable-grid"><thead><tr><th></th>${data.days.map((d) => `<th>${d.label.slice(0, 3)}</th>`).join('')}</tr></thead><tbody>${rowsHtml}</tbody></table>`;
   }
-  const classArmCellFn = (s) => `${s.subjectName}<br><small>${s.teacherName}</small>`;
-  const teacherCellFn = (s) => `${s.subjectName}<br><small>${s.className} · ${s.armName}</small>`;
+  // Stacks each slot in the cell (dashed rule between them when a block
+  // period holds several in parallel); a single-slot cell — every
+  // student/parent/teacher cell, and most admin ones — renders exactly
+  // as before.
+  const classArmCellFn = (slots) => slots.map((s) => `${s.subjectName}<br><small>${s.teacherName}</small>`).join('<hr style="margin:4px 0;border:none;border-top:1px dashed #dce5df">');
+  const teacherCellFn = (slots) => slots.map((s) => `${s.subjectName}<br><small>${s.className} · ${s.armName}</small>`).join('<hr style="margin:4px 0;border:none;border-top:1px dashed #dce5df">');
 
   async function loadTimetableGridByFetch(containerId, apiPath, cellFn) {
     const el = document.getElementById(containerId);

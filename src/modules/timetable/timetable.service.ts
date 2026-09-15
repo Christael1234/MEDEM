@@ -1,12 +1,17 @@
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { AcademicSessionsService } from '../academic-sessions/academic-sessions.service';
 import { AuditService } from '../audit/audit.service';
 import { ClassesService } from '../classes/classes.service';
+import { StudentsService } from '../students/students.service';
 import { RequestContextService } from '../../common/context/request-context';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { tenantScopedCreate } from '../../common/prisma/tenant-scoped-create';
+import { CreateTimetableSlotDto } from './dto/create-timetable-slot.dto';
 import { UpdateTimetableSettingsDto } from './dto/update-timetable-settings.dto';
+import { UpdateTimetableSlotDto } from './dto/update-timetable-slot.dto';
 import { TIMETABLE_DAYS, DEFAULT_DAY_START_TIME, DEFAULT_DAY_END_TIME, buildPeriods, TimetablePeriod } from './timetable-schedule';
-import { distributePeriodsPerWeek, scheduleAllArms } from './timetable-generator';
+import { BlockGroup, distributePeriodsPerWeek, scheduleAllArms } from './timetable-generator';
 
 @Injectable()
 export class TimetableService {
@@ -15,6 +20,8 @@ export class TimetableService {
     private readonly classes: ClassesService,
     private readonly requestContext: RequestContextService,
     private readonly audit: AuditService,
+    private readonly students: StudentsService,
+    private readonly academicSessions: AcademicSessionsService,
   ) {}
 
   /** Lazily creates the tenant's settings row with sensible defaults on
@@ -90,10 +97,12 @@ export class TimetableService {
   /**
    * Regenerates the whole tenant's timetable from current
    * TeacherSubjectAssignment data and the current TimetableSettings. Wipes
-   * every existing slot for the tenant first: a timetable is a derived
-   * artifact, not something hand-edited into a state the generator
-   * wouldn't produce, so "regenerate" means "recompute from scratch", not
-   * "merge".
+   * every existing slot for the tenant first — including any manual edits
+   * made via createSlot/updateSlot/deleteSlot below: "regenerate" means
+   * "recompute from scratch", not "merge". Individual slots are editable
+   * for fine-tuning *after* a generate, not as a permanent alternative to
+   * it — running generate again discards those edits along with
+   * everything else.
    *
    * A Nursery class's day is sized to its own subject count (one period
    * per subject per day, every day) rather than stretched across the
@@ -110,12 +119,19 @@ export class TimetableService {
 
     const schoolClasses = await this.prisma.db.schoolClass.findMany({
       include: {
-        arms: { select: { id: true, name: true } },
-        teacherAssignments: { select: { subjectId: true, staffProfileId: true, subject: { select: { name: true } } } },
+        arms: { select: { id: true, name: true, stream: true } },
+        teacherAssignments: {
+          select: {
+            subjectId: true,
+            staffProfileId: true,
+            subject: { select: { name: true, isCompulsory: true, isCoreTrade: true, streams: true } },
+          },
+        },
       },
     });
 
     const unitsByArm = new Map<string, { subjectId: string; staffProfileId: string }[]>();
+    const blockGroupsByArm = new Map<string, BlockGroup[]>();
     const periodsByArm = new Map<string, TimetablePeriod[]>();
     const skipped: { armId: string; armName: string; className: string; reason: string }[] = [];
 
@@ -131,18 +147,64 @@ export class TimetableService {
         : fullDayPeriods;
       const slotsPerWeek = periodsForClass.length * TIMETABLE_DAYS.length;
 
-      const withCounts = distributePeriodsPerWeek(sc.teacherAssignments, slotsPerWeek);
       for (const arm of sc.arms) {
+        periodsByArm.set(arm.id, periodsForClass);
+
+        // Senior Secondary arm with a stream tagged: compulsory AND
+        // stream-matching elective subjects each keep their own exclusive
+        // cells (a student only ever picks ONE trade subject, but 3-4
+        // electives — if electives shared one block like Trade does, a
+        // student's own several chosen electives would collide at the
+        // same cell). Only core-trade subjects share one block of cells
+        // (see scheduleBlockGroup): every trade option runs in parallel,
+        // a student attends whichever one they picked, and since they
+        // only ever pick one, no collision is possible there either. An
+        // SS arm with no stream set (or any non-SS class) falls through
+        // to the flat behavior below, unchanged.
+        if (sc.level === 'SENIOR_SECONDARY' && arm.stream) {
+          const compulsory = sc.teacherAssignments.filter((a) => a.subject.isCompulsory);
+          const trade = sc.teacherAssignments.filter((a) => a.subject.isCoreTrade);
+          const elective = sc.teacherAssignments.filter(
+            (a) => !a.subject.isCompulsory && !a.subject.isCoreTrade && a.subject.streams.includes(arm.stream!),
+          );
+          const exclusiveAssignments = [...compulsory, ...elective];
+
+          const distributionInput: { subjectId: string }[] = exclusiveAssignments.map((a) => ({ subjectId: a.subjectId }));
+          if (trade.length) distributionInput.push({ subjectId: '~TRADE' });
+
+          if (!distributionInput.length) {
+            skipped.push({ armId: arm.id, armName: arm.name, className: sc.name, reason: 'No compulsory, trade, or stream-matching elective subjects assigned yet' });
+            continue;
+          }
+
+          const withCounts = distributePeriodsPerWeek(distributionInput, slotsPerWeek);
+          const periodsFor = (key: string) => withCounts.find((w) => w.subjectId === key)?.periodsPerWeek ?? 0;
+
+          const units: { subjectId: string; staffProfileId: string }[] = [];
+          exclusiveAssignments.forEach((a) => {
+            const count = periodsFor(a.subjectId);
+            for (let i = 0; i < count; i++) units.push({ subjectId: a.subjectId, staffProfileId: a.staffProfileId });
+          });
+          unitsByArm.set(arm.id, units);
+
+          const groups: BlockGroup[] = [];
+          if (trade.length) {
+            groups.push({ label: 'Trade Period', members: trade.map((a) => ({ subjectId: a.subjectId, staffProfileId: a.staffProfileId })), periodsNeeded: periodsFor('~TRADE') });
+          }
+          blockGroupsByArm.set(arm.id, groups);
+          continue;
+        }
+
+        const withCounts = distributePeriodsPerWeek(sc.teacherAssignments, slotsPerWeek);
         const units: { subjectId: string; staffProfileId: string }[] = [];
         withCounts.forEach((a) => {
           for (let i = 0; i < a.periodsPerWeek; i++) units.push({ subjectId: a.subjectId, staffProfileId: a.staffProfileId });
         });
         unitsByArm.set(arm.id, units);
-        periodsByArm.set(arm.id, periodsForClass);
       }
     }
 
-    const outcomes = scheduleAllArms(unitsByArm, periodsByArm, TIMETABLE_DAYS);
+    const outcomes = scheduleAllArms(unitsByArm, periodsByArm, TIMETABLE_DAYS, Date.now(), blockGroupsByArm);
 
     const rows = outcomes.flatMap((o) =>
       o.placed.map((p) => {
@@ -161,8 +223,14 @@ export class TimetableService {
 
     const armNameById = new Map(schoolClasses.flatMap((sc) => sc.arms.map((a) => [a.id, { armName: a.name, className: sc.name }])));
     const conflicts = outcomes
-      .filter((o) => o.unplacedCount > 0)
-      .map((o) => ({ armId: o.armId, ...armNameById.get(o.armId)!, reason: 'Could not find a conflict-free schedule: likely a teacher is overloaded across too many classes' }));
+      .filter((o) => o.unplacedCount > 0 || o.unplacedBlockGroups.length > 0)
+      .map((o) => ({
+        armId: o.armId,
+        ...armNameById.get(o.armId)!,
+        reason: o.unplacedBlockGroups.length
+          ? `Could not find enough shared free periods for: ${o.unplacedBlockGroups.join(', ')} (likely a trade/elective teacher is overloaded across too many classes)`
+          : 'Could not find a conflict-free schedule: likely a teacher is overloaded across too many classes',
+      }));
 
     await this.prisma.db.$transaction(async (tx) => {
       await tx.timetableSlot.deleteMany({});
@@ -192,11 +260,20 @@ export class TimetableService {
     return this.gridForArm(classArmId);
   }
 
-  private async gridForArm(classArmId: string) {
+  /** `studentId`, when given, personalizes a Senior Secondary student's
+   * grid down to just the subjects they actually selected this session
+   * (compulsory + trade + their own electives) — every other subject
+   * taught to the arm (including every OTHER trade option, all sharing
+   * the same Trade Period cells — see generate()) is hidden rather than
+   * shown as an extra/competing slot. Every other level has no selection
+   * concept, so their grid is never filtered. Only the student's own view
+   * and a parent's child view pass `studentId`; admin/teacher grids stay
+   * fully unfiltered (they need to see the whole arm/room). */
+  private async gridForArm(classArmId: string, studentId?: string) {
     const [arm, settings] = await Promise.all([
       this.prisma.db.classArm.findUniqueOrThrow({
         where: { id: classArmId },
-        select: { name: true, schoolClass: { select: { name: true } } },
+        select: { name: true, schoolClass: { select: { name: true, level: true } } },
       }),
       this.getSettings(),
     ]);
@@ -208,6 +285,15 @@ export class TimetableService {
       },
       orderBy: [{ dayOfWeek: 'asc' }, { periodIndex: 'asc' }],
     });
+
+    let visibleSlots = slots;
+    if (studentId && arm.schoolClass.level === 'SENIOR_SECONDARY') {
+      const currentSession = await this.academicSessions.getCurrentSession();
+      const selection = currentSession ? await this.students.getSubjectSelection(studentId, currentSession.id) : [];
+      const selectedSubjectIds = new Set(selection.map((s) => s.subjectId));
+      visibleSlots = slots.filter((s) => selectedSubjectIds.has(s.subjectId));
+    }
+
     return {
       classArmId,
       className: arm.schoolClass.name,
@@ -215,7 +301,7 @@ export class TimetableService {
       days: TIMETABLE_DAYS,
       periods: buildPeriods(settings.dayStartTime, settings.dayEndTime, settings.breaks),
       breaks: settings.breaks,
-      slots: slots.map((s) => ({
+      slots: visibleSlots.map((s) => ({
         dayOfWeek: s.dayOfWeek,
         periodIndex: s.periodIndex,
         startTime: s.startTime,
@@ -265,15 +351,16 @@ export class TimetableService {
     };
   }
 
-  /** For the STUDENT portal: their own class arm's grid. */
+  /** For the STUDENT portal: their own class arm's grid, personalized to
+   * their own subject selection (see gridForArm). */
   async getForCurrentStudent() {
     const userId = this.requestContext.getUserId();
-    const student = await this.prisma.db.student.findUniqueOrThrow({ where: { userId }, select: { currentClassArmId: true } });
+    const student = await this.prisma.db.student.findUniqueOrThrow({ where: { userId }, select: { id: true, currentClassArmId: true } });
     if (!student.currentClassArmId) {
       const settings = await this.getSettings();
       return { slots: [], days: TIMETABLE_DAYS, periods: buildPeriods(settings.dayStartTime, settings.dayEndTime, settings.breaks), breaks: settings.breaks };
     }
-    return this.gridForArm(student.currentClassArmId);
+    return this.gridForArm(student.currentClassArmId, student.id);
   }
 
   /** For the PARENT portal: a specific linked child's grid. Caller
@@ -285,7 +372,7 @@ export class TimetableService {
       const settings = await this.getSettings();
       return { slots: [], days: TIMETABLE_DAYS, periods: buildPeriods(settings.dayStartTime, settings.dayEndTime, settings.breaks), breaks: settings.breaks };
     }
-    return this.gridForArm(student.currentClassArmId);
+    return this.gridForArm(student.currentClassArmId, studentId);
   }
 
   private async assertReadAccess(classArmId: string): Promise<void> {

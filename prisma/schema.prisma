@@ -1203,7 +1203,11 @@ model TimetableSlot {
   endTime        String
   createdAt      DateTime     @default(now())
 
-  @@unique([classArmId, dayOfWeek, periodIndex])
+  // Multiple subjects can now share a cell (Trade/Elective block periods —
+  // see TimetableService.generate): different subjects, different
+  // teachers, same class-arm/day/period. staffProfileId's own unique
+  // index below is what still guarantees no teacher is double-booked.
+  @@unique([classArmId, dayOfWeek, periodIndex, subjectId])
   @@unique([staffProfileId, dayOfWeek, periodIndex])
   @@index([tenantId])
   @@map("timetable_slots")

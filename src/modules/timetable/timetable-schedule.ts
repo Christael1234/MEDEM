@@ -3,7 +3,7 @@
  * admin-configurable settings (TimetableSettings/TimetableBreak) rather
  * than a hardcoded constant; see TimetableService.getSettings/buildPeriods.
  * Period length is the one thing that isn't admin-configurable: every
- * period is 30 minutes, app-wide.
+ * period is 40 minutes, app-wide.
  */
 export interface TimetablePeriod {
   index: number;
@@ -30,7 +30,7 @@ export const TIMETABLE_DAYS: TimetableDay[] = [
   { value: 5, label: 'Friday' },
 ];
 
-export const PERIOD_DURATION_MINUTES = 30;
+export const PERIOD_DURATION_MINUTES = 40;
 export const DEFAULT_DAY_START_TIME = '08:00';
 export const DEFAULT_DAY_END_TIME = '14:00';
 

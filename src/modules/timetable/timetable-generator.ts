@@ -15,6 +15,22 @@ export interface ArmGenerationOutcome {
   armId: string;
   placed: PlacedLesson[];
   unplacedCount: number;
+  /** Labels of any block groups (see BlockGroup) that couldn't find enough
+   * shared-free cells — reported separately from unplacedCount since a
+   * block group failure means "no N cells work for every member teacher
+   * at once", a different failure mode than a single exclusive unit. */
+  unplacedBlockGroups: string[];
+}
+
+/** A set of (subject, teacher) pairs that all occupy the SAME cells in
+ * parallel — e.g. every core-trade subject sharing "Trade Period" slots,
+ * or every stream-matching elective sharing "Elective Period" slots. Used
+ * for Senior Secondary arms with a stream tagged; see
+ * TimetableService.generate. */
+export interface BlockGroup {
+  label: string;
+  members: { subjectId: string; staffProfileId: string }[];
+  periodsNeeded: number;
 }
 
 /** day (1-5) * 1000 + period, collision-free as long as no arm's day has
@@ -53,6 +69,50 @@ export function distributePeriodsPerWeek<T extends { subjectId: string }>(
 }
 
 /**
+ * Reserves `group.periodsNeeded` cells where every member's teacher is
+ * free at all of them simultaneously (checked against the same
+ * `teacherOccupancy` map the exclusive-unit backtracking uses), then
+ * books every member into every reserved cell. Greedy, not backtracking:
+ * a block group needs the same handful of cells free for potentially
+ * several teachers at once, a harder combinatorial ask than one unit
+ * needing any one free cell, so this takes the first cells that satisfy
+ * every teacher's availability rather than searching for an optimal set.
+ * Runs before the exclusive-unit backtracking for the same arm, which
+ * then only ever sees whatever cells are left over.
+ */
+function scheduleBlockGroup(
+  armId: string,
+  group: BlockGroup,
+  usedCell: boolean[],
+  cells: { day: number; period: number }[],
+  teacherOccupancy: Map<string, Set<number>>,
+): { placed: PlacedLesson[]; ok: boolean } {
+  const viable: number[] = [];
+  for (let i = 0; i < cells.length; i++) {
+    if (usedCell[i]) continue;
+    const key = slotKey(cells[i].day, cells[i].period);
+    const allFree = group.members.every((m) => !(teacherOccupancy.get(m.staffProfileId)?.has(key)));
+    if (allFree) viable.push(i);
+    if (viable.length >= group.periodsNeeded) break;
+  }
+  if (viable.length < group.periodsNeeded) return { placed: [], ok: false };
+
+  const placed: PlacedLesson[] = [];
+  for (const cellIdx of viable) {
+    usedCell[cellIdx] = true;
+    const cell = cells[cellIdx];
+    const key = slotKey(cell.day, cell.period);
+    for (const m of group.members) {
+      const set = teacherOccupancy.get(m.staffProfileId) ?? new Set<number>();
+      set.add(key);
+      teacherOccupancy.set(m.staffProfileId, set);
+      placed.push({ armId, subjectId: m.subjectId, staffProfileId: m.staffProfileId, dayOfWeek: cell.day, periodIndex: cell.period });
+    }
+  }
+  return { placed, ok: true };
+}
+
+/**
  * Places every lesson unit for one class arm into its week's cells,
  * respecting two hard constraints (mirrored by TimetableSlot's two @@unique
  * indexes): the arm sees exactly one subject per cell, and a teacher
@@ -79,19 +139,29 @@ function scheduleArm(
   rng: () => number,
   periods: TimetablePeriod[],
   days: TimetableDay[],
+  blockGroups: BlockGroup[] = [],
 ): ArmGenerationOutcome {
   const slotsForArm = periods.length * days.length;
   const cells = shuffle(
     days.flatMap((d) => periods.map((p) => ({ day: d.value, period: p.index }))),
     rng,
   );
+
+  const usedCell = new Array(cells.length).fill(false);
+  const blockPlaced: PlacedLesson[] = [];
+  const unplacedBlockGroups: string[] = [];
+  for (const group of blockGroups) {
+    const result = scheduleBlockGroup(armId, group, usedCell, cells, teacherOccupancy);
+    if (result.ok) blockPlaced.push(...result.placed);
+    else unplacedBlockGroups.push(group.label);
+  }
+
   const units = shuffle([...unitsForArm], rng).sort((a, b) => {
     const freeA = slotsForArm - (teacherOccupancy.get(a.staffProfileId)?.size ?? 0);
     const freeB = slotsForArm - (teacherOccupancy.get(b.staffProfileId)?.size ?? 0);
     return freeA - freeB; // most-constrained (fewest free slots) teacher first
   });
 
-  const usedCell = new Array(cells.length).fill(false);
   const subjectDaysUsed = new Map<string, Set<number>>();
   const assignment: PlacedLesson[] = new Array(units.length);
 
@@ -138,8 +208,8 @@ function scheduleArm(
 
   const ok = backtrack(0);
   return ok
-    ? { armId, placed: assignment, unplacedCount: 0 }
-    : { armId, placed: [], unplacedCount: units.length };
+    ? { armId, placed: [...blockPlaced, ...assignment], unplacedCount: 0, unplacedBlockGroups }
+    : { armId, placed: blockPlaced, unplacedCount: units.length, unplacedBlockGroups };
 }
 
 /**
@@ -155,6 +225,7 @@ export function scheduleAllArms(
   periodsByArm: Map<string, TimetablePeriod[]>,
   days: TimetableDay[],
   seed = Date.now(),
+  blockGroupsByArm: Map<string, BlockGroup[]> = new Map(),
 ): ArmGenerationOutcome[] {
   let s = seed;
   const rng = () => {
@@ -164,5 +235,7 @@ export function scheduleAllArms(
 
   const armIds = shuffle([...unitsByArm.keys()], rng);
   const teacherOccupancy = new Map<string, Set<number>>();
-  return armIds.map((armId) => scheduleArm(armId, unitsByArm.get(armId)!, teacherOccupancy, rng, periodsByArm.get(armId)!, days));
+  return armIds.map((armId) =>
+    scheduleArm(armId, unitsByArm.get(armId)!, teacherOccupancy, rng, periodsByArm.get(armId)!, days, blockGroupsByArm.get(armId) ?? []),
+  );
 }
