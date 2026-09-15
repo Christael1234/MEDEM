@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { SchoolLevel, Stream } from '@prisma/client';
 import { AllowAnyAuthenticatedRole } from '../../common/rbac/decorators/allow-any-role.decorator';
 import { Roles } from '../../common/rbac/decorators/roles.decorator';
@@ -55,6 +55,7 @@ export class SubjectsController {
 
   @Roles('PROPRIETOR', 'PRINCIPAL')
   @Delete('teacher-subject-assignments/:id')
+  @HttpCode(204)
   removeAssignment(@Param('id') id: string) {
     return this.subjectsService.removeAssignment(id);
   }

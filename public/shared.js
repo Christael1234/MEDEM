@@ -220,7 +220,15 @@
       throw new Error(message);
     }
     if (res.status === 204) return null;
-    return res.json();
+    // A void-returning controller method (no explicit @HttpCode) still
+    // sends status 200 with an empty body, not 204 — res.json() throws
+    // on empty input, which without this looked like the request itself
+    // had failed even though the server-side action succeeded. Reading
+    // as text first and only parsing when there's something there covers
+    // that case for every endpoint, not just the ones hit so far.
+    const text = await res.text();
+    if (!text) return null;
+    return JSON.parse(text);
   }
   function logout() { clearSession(); location.href = 'index.html'; }
 
