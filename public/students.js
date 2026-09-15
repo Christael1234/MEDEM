@@ -285,7 +285,8 @@
     };
   }
 
-  async function openStudentDetailModal(studentId) {
+  async function openStudentDetailModal(studentId, editMode) {
+    editMode = !!editMode;
     let s, classes = [], sessions = [];
     try {
       [s, classes, sessions] = await Promise.all([
@@ -335,22 +336,28 @@
       } catch (err) { window.SchoolOS.toast(`Could not change class (${err.message})`); }
     };
 
+    const canEditNow = canManage && editMode;
     const isSeniorSecondary = s.currentClassArm && s.currentClassArm.schoolClass.level === 'SENIOR_SECONDARY';
     const streamHtml = isSeniorSecondary
-      ? (canManage
+      ? (canEditNow
           ? `<div class="inline-edit-row"><select id="studentStreamSelect" aria-label="Stream"><option value="">— Not set —</option>${Object.entries(STREAM_LABELS).map(([k, v]) => `<option value="${k}" ${s.stream === k ? 'selected' : ''}>${v}</option>`).join('')}</select><button type="button" class="outline-button" data-save-student-stream="${studentId}">Save</button></div>`
           : `<div class="modal-detail-row"><span>Stream</span><strong>${s.stream ? STREAM_LABELS[s.stream] : 'Not set'}</strong></div>`)
       : '';
+    const editToggleBtn = canManage
+      ? (editMode
+          ? `<button type="button" class="outline-button" data-cancel-edit-student="${studentId}">Cancel</button>`
+          : `<button type="button" class="outline-button" data-edit-student="${studentId}"><i class="fa-solid fa-pen"></i> Edit</button>`)
+      : '';
 
-    window.SchoolOS.openModal(`<p class="eyebrow">Students</p><h2>Student details</h2>
-      ${canManage ? `<form onsubmit="__renameStudentSubmit(event)">
+    window.SchoolOS.openModal(`<p class="eyebrow">Students</p><div style="display:flex;align-items:center;justify-content:space-between;gap:10px"><h2 style="margin:0">Student details</h2>${editToggleBtn}</div>
+      ${canEditNow ? `<form onsubmit="__renameStudentSubmit(event)">
         <div class="inline-edit-row"><input name="firstName" value="${s.firstName}" aria-label="First name"><input name="lastName" value="${s.lastName}" aria-label="Last name"></div>
         <div class="inline-edit-row"><input name="middleName" value="${s.middleName || ''}" placeholder="Middle name (optional)" aria-label="Middle name"></div>
         <div class="form-actions" style="margin-top:10px"><button type="submit" class="new-button">Save changes</button></div>
       </form>` : `<p class="modal-sub">${s.firstName} ${s.lastName}</p>`}
       <div class="modal-detail-row"><span>Admission No.</span><strong>${s.admissionNo}</strong></div>
       <div class="modal-detail-row"><span>Status</span><strong>${s.status}</strong></div>
-      ${canManage ? `<form class="inline-edit-row" onsubmit="__moveStudentClassSubmit(event)"><select name="classArm" aria-label="Class">${classArms.map((a) => `<option ${a.label === className ? 'selected' : ''}>${a.label}</option>`).join('')}</select><input name="reason" placeholder="Reason (optional)" aria-label="Reason for class change"><button type="submit" class="outline-button">Save</button></form>` : `<div class="modal-detail-row"><span>Class</span><strong>${className}</strong></div>`}
+      ${canEditNow ? `<form class="inline-edit-row" onsubmit="__moveStudentClassSubmit(event)"><select name="classArm" aria-label="Class">${classArms.map((a) => `<option ${a.label === className ? 'selected' : ''}>${a.label}</option>`).join('')}</select><input name="reason" placeholder="Reason (optional)" aria-label="Reason for class change"><button type="submit" class="outline-button">Save</button></form>` : `<div class="modal-detail-row"><span>Class</span><strong>${className}</strong></div>`}
       <div class="modal-detail-row"><span>Gender</span><strong>${s.gender || '—'}</strong></div>
       ${isSeniorSecondary ? `<div class="detail-section"><p class="eyebrow">Stream</p>${streamHtml}</div>` : ''}
       <div class="detail-section"><p class="eyebrow">Guardians</p>${guardiansHtml}</div>
@@ -491,6 +498,8 @@
 
   document.addEventListener('click', (e) => {
     const viewStudent = e.target.closest('[data-view-student]'); if (viewStudent) openStudentDetailModal(viewStudent.dataset.viewStudent);
+    const editStudent = e.target.closest('[data-edit-student]'); if (editStudent) openStudentDetailModal(editStudent.dataset.editStudent, true);
+    const cancelEditStudent = e.target.closest('[data-cancel-edit-student]'); if (cancelEditStudent) openStudentDetailModal(cancelEditStudent.dataset.cancelEditStudent, false);
     const saveStream = e.target.closest('[data-save-student-stream]'); if (saveStream) saveStudentStream(saveStream.dataset.saveStudentStream);
     const approveStreamReq = e.target.closest('[data-approve-stream-request]'); if (approveStreamReq) reviewStreamRequest(approveStreamReq.dataset.approveStreamRequest, true);
     const rejectStreamReq = e.target.closest('[data-reject-stream-request]'); if (rejectStreamReq) reviewStreamRequest(rejectStreamReq.dataset.rejectStreamRequest, false);

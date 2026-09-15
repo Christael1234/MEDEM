@@ -141,7 +141,8 @@
     const teachers = level ? lastLoadedTeachers.filter((s) => (lastTeacherLevelsById[s.id] || []).includes(level)) : lastLoadedTeachers;
     tbody.innerHTML = teachers.length ? teachers.map((s) => `<tr><td><div class="person-cell"><span class="mini-avatar">${window.SchoolOS.initialsOf(s.user.firstName + ' ' + s.user.lastName)}</span>${s.user.firstName} ${s.user.lastName}</div></td><td>${s.staffId}</td><td>${s.department || '—'}</td><td>${s.user.email}</td><td class="row-action"><button class="outline-button" data-view-teacher="${s.id}">View</button></td></tr>`).join('') : `<tr><td colspan="5">No teachers${level ? ' at this level' : ''} yet.</td></tr>`;
   }
-  async function openTeacherDetailModal(staffProfileId) {
+  async function openTeacherDetailModal(staffProfileId, editMode) {
+    editMode = !!editMode;
     let t, subjects = [], classes = [];
     try {
       [t, subjects, classes] = await Promise.all([
@@ -152,8 +153,9 @@
     } catch (err) { window.SchoolOS.toast(`Could not load teacher (${err.message})`); return; }
     const user = window.SchoolOS.getUser();
     const canManage = user && (user.role === 'PROPRIETOR' || user.role === 'PRINCIPAL');
+    const canEditNow = canManage && editMode;
     const ledHtml = (t.classArmsLed || []).map((a) => `<div class="modal-detail-row"><span>${a.name}</span><strong>${a.schoolClass.name}</strong></div>`).join('') || '<p class="modal-sub" style="margin:0">Not a class teacher for any arm.</p>';
-    const taughtHtml = (t.teacherAssignments || []).map((a) => `<div class="modal-detail-row"><span>${a.subject.name}</span><strong>${a.schoolClass.name}</strong>${canManage ? ` <button type="button" class="outline-button" data-remove-assignment="${a.id}" data-subject-name="${a.subject.name}" data-class-name="${a.schoolClass.name}" data-teacher-name="${t.user.firstName} ${t.user.lastName}">Remove</button>` : ''}</div>`).join('') || '<p class="modal-sub" style="margin:0">No subjects assigned yet.</p>';
+    const taughtHtml = (t.teacherAssignments || []).map((a) => `<div class="modal-detail-row"><span>${a.subject.name}</span><strong>${a.schoolClass.name}</strong>${canEditNow ? ` <button type="button" class="outline-button" data-remove-assignment="${a.id}" data-subject-name="${a.subject.name}" data-class-name="${a.schoolClass.name}" data-teacher-name="${t.user.firstName} ${t.user.lastName}">Remove</button>` : ''}</div>`).join('') || '<p class="modal-sub" style="margin:0">No subjects assigned yet.</p>';
 
     const subjectByName = Object.fromEntries(subjects.map((sj) => [sj.name, sj.id]));
     const classByName = Object.fromEntries(classes.map((c) => [c.name, c.id]));
@@ -177,8 +179,13 @@
         window.SchoolOS.toast('Subject assignment added'); loadRealTeachers(); window.SchoolOS.closeModal();
       } catch (err) { window.SchoolOS.toast(`Could not add assignment (${err.message})`); }
     };
-    window.SchoolOS.openModal(`<p class="eyebrow">Teachers</p><h2>Teacher details</h2>
-      ${canManage ? `<form onsubmit="__renameTeacherSubmit(event)">
+    const editToggleBtn = canManage
+      ? (editMode
+          ? `<button type="button" class="outline-button" data-cancel-edit-teacher="${staffProfileId}">Cancel</button>`
+          : `<button type="button" class="outline-button" data-edit-teacher="${staffProfileId}"><i class="fa-solid fa-pen"></i> Edit</button>`)
+      : '';
+    window.SchoolOS.openModal(`<p class="eyebrow">Teachers</p><div style="display:flex;align-items:center;justify-content:space-between;gap:10px"><h2 style="margin:0">Teacher details</h2>${editToggleBtn}</div>
+      ${canEditNow ? `<form onsubmit="__renameTeacherSubmit(event)">
         <div class="inline-edit-row"><input name="firstName" value="${t.user.firstName}" aria-label="First name"><input name="lastName" value="${t.user.lastName}" aria-label="Last name"></div>
         <div class="inline-edit-row"><input name="department" value="${t.department || ''}" placeholder="Department" aria-label="Department"><input name="position" value="${t.position || ''}" placeholder="Position" aria-label="Position"></div>
         <div class="form-actions" style="margin-top:10px"><button type="submit" class="new-button">Save changes</button></div>
@@ -187,7 +194,7 @@
       <div class="modal-detail-row"><span>Login email</span><strong>${t.user.email}</strong></div>
       <div class="detail-section"><p class="eyebrow">Class teacher (homeroom) for</p>${ledHtml}<p class="modal-sub" style="margin:8px 0 0">Change this from Academics → Classes → the class in question.</p></div>
       <div class="detail-section"><p class="eyebrow">Subjects taught</p>${taughtHtml}
-        ${canManage ? `<form class="inline-edit-row" style="margin-top:10px" onsubmit="__addAssignmentSubmit(event)"><select name="subject" aria-label="Subject to add">${subjects.map((sj) => `<option>${sj.name}</option>`).join('')}</select><select name="cls" aria-label="Class to add">${classes.map((c) => `<option>${c.name}</option>`).join('')}</select><button type="submit" class="outline-button">+ Add</button></form>` : ''}
+        ${canEditNow ? `<form class="inline-edit-row" style="margin-top:10px" onsubmit="__addAssignmentSubmit(event)"><select name="subject" aria-label="Subject to add">${subjects.map((sj) => `<option>${sj.name}</option>`).join('')}</select><select name="cls" aria-label="Class to add">${classes.map((c) => `<option>${c.name}</option>`).join('')}</select><button type="submit" class="outline-button">+ Add</button></form>` : ''}
       </div>
       <div class="form-actions"><button class="outline-button" data-modal-close>Close</button></div>`);
   }
@@ -1519,6 +1526,8 @@
     const promoteArm = e.target.closest('[data-promote-arm]'); if (promoteArm) openPromotionModal(promoteArm.dataset.promoteArm, promoteArm.dataset.armLabel);
     const viewClass = e.target.closest('[data-view-class]'); if (viewClass) openClassDetailModal(viewClass.dataset.viewClass);
     const viewTeacher = e.target.closest('[data-view-teacher]'); if (viewTeacher) openTeacherDetailModal(viewTeacher.dataset.viewTeacher);
+    const editTeacher = e.target.closest('[data-edit-teacher]'); if (editTeacher) openTeacherDetailModal(editTeacher.dataset.editTeacher, true);
+    const cancelEditTeacher = e.target.closest('[data-cancel-edit-teacher]'); if (cancelEditTeacher) openTeacherDetailModal(cancelEditTeacher.dataset.cancelEditTeacher, false);
     const rmAsg = e.target.closest('[data-remove-assignment]');
     if (rmAsg && window.confirm(`Remove ${rmAsg.dataset.teacherName} as the ${rmAsg.dataset.subjectName} teacher for ${rmAsg.dataset.className}?`)) removeTeacherAssignment(rmAsg.dataset.removeAssignment);
     const submitResultBtn = e.target.closest('[data-submit-result]'); if (submitResultBtn) submitResult(submitResultBtn.dataset.submitResult);
